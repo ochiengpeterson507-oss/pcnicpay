@@ -1,0 +1,8 @@
+{
+  "name": "PicnicPay",
+  "description": "Transparent Contributions. Trusted Together. A modern web application for managing picnic group finances.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
