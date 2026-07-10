@@ -24,8 +24,8 @@ function getSupabase() {
   return supabaseClient;
 }
 
+export const app = express();
 async function startServer() {
-  const app = express();
   const PORT = 3000;
   
   const httpServer = createHttpServer(app);

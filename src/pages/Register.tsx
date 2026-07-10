@@ -23,6 +23,13 @@ export default function Register() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, email, password }),
       });
+      if (!res.ok) {
+        const text = await res.text();
+        let errorMsg = 'Failed to authenticate';
+        try { errorMsg = JSON.parse(text).error || errorMsg; } catch (e) { console.error('Non-JSON error response:', text); }
+        setError(errorMsg);
+        return;
+      }
       const data = await res.json();
       
       if (!res.ok) {

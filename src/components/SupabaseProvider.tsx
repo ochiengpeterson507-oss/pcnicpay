@@ -8,7 +8,10 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     fetch('/api/config')
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error('Config fetch failed');
+        return res.json();
+      })
       .then(config => {
         if (config.supabaseUrl && config.supabaseAnonKey) {
           const client = createClient(config.supabaseUrl, config.supabaseAnonKey);

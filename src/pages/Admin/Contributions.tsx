@@ -22,7 +22,7 @@ export default function Contributions() {
 
   useEffect(() => {
     fetch('/api/users', { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } })
-      .then(res => res.json())
+      .then(res => res.ok ? res.json() : [])
       .then(setMembers)
       .catch(console.error);
   }, []);

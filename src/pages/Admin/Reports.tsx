@@ -11,7 +11,7 @@ export default function Reports() {
 
   function fetchPayments() {
     fetch('/api/payments', { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } })
-      .then(res => res.json())
+      .then(res => res.ok ? res.json() : [])
       .then(data => { setPayments(data); setLoading(false); })
       .catch(() => setLoading(false));
   };

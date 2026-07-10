@@ -19,7 +19,10 @@ export default function PaystackPaymentModal({ isOpen, onClose, onSuccessCallbac
   const [paystackCurrency, setPaystackCurrency] = useState('KES');
   
   useEffect(() => {
-    fetch('/api/config').then(res => res.json()).then(data => {
+    fetch('/api/config').then(res => {
+      if (!res.ok) throw new Error('Failed to fetch config');
+      return res.json();
+    }).then(data => {
       setPaystackKey(data.paystackPublicKey || '');
       setPaystackCurrency(data.paystackCurrency || 'KES');
     }).catch(console.error);
@@ -48,7 +51,13 @@ export default function PaystackPaymentModal({ isOpen, onClose, onSuccessCallbac
            },
            body: JSON.stringify({ reference: reference.reference })
         });
-        const data = await res.json();
+        
+        let data;
+        try {
+          data = await res.json();
+        } catch (e) {
+          throw new Error('Invalid server response');
+        }
         if (data.success) {
            setPaymentStatus('success');
            setPaymentMessage(`Success! KES ${data.payment.amount} received.`);
@@ -87,7 +96,16 @@ export default function PaystackPaymentModal({ isOpen, onClose, onSuccessCallbac
           email: user?.email || ''
         })
       });
-      const data = await res.json();
+      
+      let data;
+      try {
+        data = await res.json();
+      } catch (e) {
+        setPaymentStatus('error');
+        setPaymentMessage('Invalid server response: ' + res.status);
+        return;
+      }
+      
       if (!res.ok) {
          setPaymentStatus('error');
          setPaymentMessage(data.error || 'Failed to initialize payment');
