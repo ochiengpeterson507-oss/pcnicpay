@@ -1,4 +1,4 @@
-import { usePaystackPayment } from "react-paystack";
+import PaystackPaymentModal from "../components/PaystackPaymentModal";
 import { useSupabase } from '../components/SupabaseProvider';
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../components/AuthProvider';
@@ -18,18 +18,9 @@ export default function Dashboard() {
   const [payments, setPayments] = useState<any[]>([]);
 
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-  const [paymentAmount, setPaymentAmount] = useState('');
-  const [phoneNumber, setPhoneNumber] = useState(user?.phone || '');
-  const [paymentStatus, setPaymentStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-  const [paymentMessage, setPaymentMessage] = useState('');
 
-  const [paystackKey, setPaystackKey] = useState('');
   
-  useEffect(() => {
-    fetch('/api/config').then(res => res.json()).then(data => {
-      setPaystackKey(data.paystackPublicKey || '');
-    }).catch(console.error);
-  }, []);
+
 
 
   
@@ -42,17 +33,9 @@ export default function Dashboard() {
     socket.on('new-payment', (payment) => {
       setPayments((prev) => [payment, ...prev]);
       fetchStats();
-      if (isPaymentModalOpen) {
-          setPaymentStatus('success');
-          setPaymentMessage(`Success! KES ${payment.amount} received. Ref: ${payment.payment_reference}`);
-          setTimeout(() => setIsPaymentModalOpen(false), 3000);
-      }
     });
     socket.on('payment-failed', (data) => {
-      if (isPaymentModalOpen) {
-          setPaymentStatus('error');
-          setPaymentMessage(`Payment failed: ${data.reason}`);
-      }
+      console.log('Payment failed:', data);
     });
     
     // Supabase Realtime
@@ -74,96 +57,33 @@ export default function Dashboard() {
       socket.off('payment-failed');
       if (channel) supabase.removeChannel(channel);
     };
-  }, [isPaymentModalOpen, supabase]);
+  }, [supabase]);
 
 
   
-  const config = {
-      reference: (new Date()).getTime().toString(),
-      email: user?.email || '',
-      firstname: user?.name?.split(' ')[0] || '',
-      lastname: user?.name?.split(' ').slice(1).join(' ') || '',
-      amount: parseInt(paymentAmount) * 100, // Paystack requires amount in kobo/cents
-      publicKey: paystackKey,
-      metadata: {
-        custom_fields: [
-          {
-            display_name: "Phone Number",
-            variable_name: "phone",
-            value: phoneNumber
-          }
-        ]
-      }
-  };
-  
-  const initializePayment = usePaystackPayment(config);
 
-  const onSuccess = async (reference: any) => {
-      setPaymentStatus('loading');
-      setPaymentMessage('Verifying payment...');
-      try {
-        const res = await fetch('/api/payments/paystack/verify', {
-           method: 'POST',
-           headers: {
-             'Content-Type': 'application/json',
-             'Authorization': `Bearer ${localStorage.getItem('token')}`
-           },
-           body: JSON.stringify({ reference: reference.reference })
-        });
-        const data = await res.json();
-        if (data.success) {
-           setPaymentStatus('success');
-           setPaymentMessage(`Success! KES ${data.payment.amount} received.`);
-           fetchStats();
-           fetchPayments();
-           setTimeout(() => setIsPaymentModalOpen(false), 3000);
-        } else {
-           setPaymentStatus('error');
-           setPaymentMessage('Payment verification failed.');
-        }
-      } catch (err) {
-        setPaymentStatus('error');
-        setPaymentMessage('Payment verification failed.');
-      }
-  };
 
-  const onClose = () => {
-    // Payment cancelled
-    setIsPaymentModalOpen(false);
-  };
-
-  
   const downloadReceipt = (payment: any) => {
     const doc = new jsPDF();
     doc.setFontSize(20);
     doc.text("Payment Receipt", 105, 20, { align: 'center' });
     
     doc.setFontSize(12);
-    doc.text(`Date: ${new Date(payment.paid_at || payment.created_at).toLocaleString()}`, 20, 40);
-    doc.text(`Receipt Number: ${payment.payment_reference}`, 20, 50);
+    doc.text(`Date: ${new Date(payment.date || payment.createdAt).toLocaleString()}`, 20, 40);
+    doc.text(`Receipt Number: ${payment.reference}`, 20, 50);
     doc.text(`Member: ${payment.user?.name || user?.name}`, 20, 60);
     
     doc.setFontSize(14);
     doc.text(`Amount Paid: KES ${payment.amount.toLocaleString()}`, 20, 80);
     
     doc.setFontSize(12);
-    doc.text(`Status: ${payment.payment_status || 'COMPLETED'}`, 20, 90);
-    doc.text(`Payment Method: ${payment.payment_method || 'Online'}`, 20, 100);
+    doc.text(`Status: ${payment.status || 'COMPLETED'}`, 20, 90);
+    doc.text(`Payment Method: ${payment.phoneNumber || 'Online'}`, 20, 100);
     
     doc.setFontSize(10);
     doc.text("Thank you for your contribution!", 105, 130, { align: 'center' });
     
-    doc.save(`receipt-${payment.payment_reference}.pdf`);
-  };
-
-  const initiatePayment = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!paystackKey) {
-       setPaymentStatus('error');
-       setPaymentMessage('Payment gateway configuration missing.');
-       return;
-    }
-    initializePayment({ onSuccess, onClose });
+    doc.save(`receipt-${payment.reference}.pdf`);
   };
 
   async function fetchStats() {
@@ -194,10 +114,6 @@ export default function Dashboard() {
   };
 
   const openPaymentModal = () => {
-    setPaymentAmount('');
-    setPhoneNumber(user?.phone || '07');
-    setPaymentStatus('idle');
-    setPaymentMessage('');
     setIsPaymentModalOpen(true);
   };
 
@@ -370,14 +286,14 @@ export default function Dashboard() {
                           </div>
                           <span className="truncate max-w-[100px] sm:max-w-none">{payment.user?.name}</span>
                         </td>
-                        <td className="p-3 text-slate-400 font-mono hidden sm:table-cell">{payment.payment_reference}</td>
+                        <td className="p-3 text-slate-400 font-mono hidden sm:table-cell">{payment.reference}</td>
                         <td className="p-3 text-right font-bold text-slate-700">KES {payment.amount.toLocaleString()}</td>
                         <td className="p-3 text-right text-slate-400">
-                          {new Date(payment.paid_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {new Date(payment.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </td>
                         
                         <td className="p-3 text-center hidden sm:table-cell">
-                          {payment.user_id === user?.id ? (
+                          {payment.userId === user?.id ? (
                             <button 
                               onClick={() => downloadReceipt(payment)}
                               className="text-[10px] bg-blue-50 text-blue-600 hover:bg-blue-100 px-2 py-1 rounded"
@@ -488,85 +404,11 @@ export default function Dashboard() {
       </footer>
 
       {/* Paystack Payment Modal */}
-      {isPaymentModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden"
-          >
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-              <h3 className="font-bold text-slate-800 text-lg">Make a Contribution</h3>
-              <button 
-                onClick={() => setIsPaymentModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600"
-              >
-                ✕
-              </button>
-            </div>
-            
-            <form onSubmit={initiatePayment} className="p-6 space-y-4">
-              {paymentStatus === 'success' && (
-                <div className="bg-emerald-50 text-emerald-600 p-4 rounded-xl text-sm font-medium border border-emerald-100 flex items-start gap-3">
-                  <div className="mt-0.5 w-4 h-4 rounded-full bg-emerald-500 text-white flex items-center justify-center text-[10px]">✓</div>
-                  {paymentMessage}
-                </div>
-              )}
-              
-              {paymentStatus === 'error' && (
-                <div className="bg-red-50 text-red-600 p-4 rounded-xl text-sm font-medium border border-red-100">
-                  {paymentMessage}
-                </div>
-              )}
-
-              {paymentStatus === 'loading' && (
-                <div className="bg-blue-50 text-blue-600 p-4 rounded-xl text-sm font-medium border border-blue-100 flex items-center gap-3">
-                  <span className="relative flex h-3 w-3">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
-                  </span>
-                  {paymentMessage}
-                </div>
-              )}
-
-              {paymentStatus !== 'success' && paymentStatus !== 'loading' && (
-                <>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Phone Number</label>
-                    <input 
-                      type="text" 
-                      required
-                      value={phoneNumber}
-                      onChange={(e) => setPhoneNumber(e.target.value)}
-                      placeholder="07XX XXX XXX"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                    />
-                    <p className="text-[10px] text-slate-400 mt-1">Registered phone number.</p>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Amount (KES)</label>
-                    <input 
-                      type="number" 
-                      required
-                      min="1"
-                      value={paymentAmount}
-                      onChange={(e) => setPaymentAmount(e.target.value)}
-                      placeholder="e.g. 1000"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                    />
-                  </div>
-                  <button 
-                    type="submit"
-                    className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl py-3 mt-2 shadow-lg shadow-emerald-500/30 transition-all"
-                  >
-                    Pay Now
-                  </button>
-                </>
-              )}
-            </form>
-          </motion.div>
-        </div>
-      )}
+      <PaystackPaymentModal 
+        isOpen={isPaymentModalOpen} 
+        onClose={() => setIsPaymentModalOpen(false)} 
+        onSuccessCallback={() => { fetchStats(); fetchPayments(); }} 
+      />
     </div>
   );
 }

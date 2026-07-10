@@ -72,7 +72,7 @@ async function startServer() {
       
       if (createError || !user) throw createError || new Error('Failed to create user');
       
-      const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET);
+      const token = jwt.sign({ id: user.id, role: user.role, email: user.email }, JWT_SECRET);
       res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
     } catch (error) {
       console.error(error);
@@ -88,7 +88,7 @@ async function startServer() {
         return res.status(401).json({ error: 'Invalid credentials' });
       }
       
-      const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET);
+      const token = jwt.sign({ id: user.id, role: user.role, email: user.email }, JWT_SECRET);
       res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
     } catch (error) {
       console.error(error);
@@ -133,7 +133,7 @@ async function startServer() {
     try {
       const { data: payments } = await getSupabase().from('Payment')
         .select('*, user:User(name, avatarUrl)')
-        .order('paid_at', { ascending: false });
+        .order('date', { ascending: false });
       res.json(payments || []);
     } catch (error: any) {
       console.error(error);
@@ -145,7 +145,7 @@ async function startServer() {
     // Webhook simulation for a payment
     try {
       const { amount, userId } = req.body;
-      const { data: payment } = await getSupabase().from('Payment').insert({
+      const { data: payment, error: insertError } = await getSupabase().from('Payment').insert({
         amount: parseFloat(amount),
         reference: `REF-${Math.floor(Math.random() * 1000000)}`,
         userId,
@@ -187,6 +187,69 @@ async function startServer() {
   
   
   
+
+  
+  apiRouter.post('/payments/paystack/initialize', authenticateToken, async (req: any, res: any) => {
+    try {
+      const { amount, currency = 'KES' } = req.body;
+      if (!process.env.PAYSTACK_SECRET_KEY) {
+        return res.status(400).json({ error: 'Paystack Secret Key is missing. Please configure it in settings.' });
+      }
+      let email = req.body.email || req.user?.email;
+      if (!email || email.trim() === '') {
+         try {
+             const { data: dbUser } = await getSupabase().from('User').select('email').eq('id', req.user.id).single();
+             if (dbUser && dbUser.email) email = dbUser.email;
+         } catch (e) {
+             console.error("Failed to get email", e);
+         }
+      }
+      if (!email || email.trim() === '') {
+         email = 'guest@example.com'; // Ultimate fallback to prevent Paystack crash
+      }
+      if (!email) {
+         const { data: dbUser } = await getSupabase().from('User').select('email').eq('id', req.user.id).single();
+         if (dbUser) email = dbUser.email;
+      }
+      if (!email) {
+         return res.status(400).json({ error: 'Email Address is required. body_email: ' + req.body.email + ', user_id: ' + req.user.id });
+      }
+      
+      const SUPPORTED_CURRENCIES = ['NGN', 'GHS', 'ZAR', 'USD', 'KES', 'RWF', 'XOF', 'EGP'];
+      if (!SUPPORTED_CURRENCIES.includes(currency)) {
+        return res.status(400).json({ error: `Currency ${currency} is not supported by Paystack.` });
+      }
+
+      const response = await fetch('https://api.paystack.co/transaction/initialize', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          amount: amount * 100,
+          email,
+          currency,
+          reference: new Date().getTime().toString()
+        })
+      });
+      const data = await response.json();
+      
+      if (!data.status) {
+        if (data.message && data.message.toLowerCase().includes('currency not supported')) {
+          return res.status(400).json({ error: `This Paystack account is not enabled for ${currency}. Please use a supported currency.` });
+        }
+        if (data.message && data.message.toLowerCase() === 'invalid key') {
+          return res.status(400).json({ error: 'Invalid Paystack API key. Please check your settings.' });
+        }
+        return res.status(400).json({ error: data.message });
+      }
+      
+      res.json(data.data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
 
   apiRouter.post('/payments/paystack/verify', authenticateToken, async (req, res) => {
     try {
@@ -230,6 +293,7 @@ async function startServer() {
              userId: userId
           });
           
+          if (insertError) { console.error('Insert error:', insertError); return res.status(500).json({ error: insertError }); }
           return res.json({ success: true, payment });
         } else {
           return res.json({ success: true, payment: existing, message: 'Already verified' });
@@ -350,7 +414,8 @@ async function startServer() {
     res.json({
       supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
       supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      paystackPublicKey: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || process.env.VITE_PAYSTACK_PUBLIC_KEY
+      paystackPublicKey: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || process.env.VITE_PAYSTACK_PUBLIC_KEY,
+      paystackCurrency: process.env.PAYSTACK_CURRENCY || 'KES'
     });
   });
 

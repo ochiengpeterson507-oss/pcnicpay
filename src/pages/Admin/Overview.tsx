@@ -192,12 +192,12 @@ export default function AdminOverview() {
                   </div>
                   <div>
                     <p className="text-sm font-bold text-slate-800">{payment.user?.name || 'Unknown'}</p>
-                    <p className="text-[10px] text-slate-500">{new Date(payment.created_at).toLocaleDateString()}</p>
+                    <p className="text-[10px] text-slate-500">{new Date(payment.createdAt).toLocaleDateString()}</p>
                   </div>
                 </div>
                 <div className="text-right">
                   <p className="text-sm font-bold text-emerald-600">+KES {payment.amount.toLocaleString()}</p>
-                  <p className="text-[10px] text-slate-400 font-mono">{payment.payment_reference}</p>
+                  <p className="text-[10px] text-slate-400 font-mono">{payment.reference}</p>
                 </div>
               </div>
             ))}

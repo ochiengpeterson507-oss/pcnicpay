@@ -126,10 +126,10 @@ export default function Contributions() {
     const tableData = filteredPayments.map(p => [
       p.user?.name || 'Unknown',
       `KES ${p.amount}`,
-      p.payment_reference || '-',
-      p.payment_method || '-',
-      p.payment_status || '-',
-      new Date(p.paid_at || p.created_at).toLocaleDateString()
+      p.reference || '-',
+      p.phoneNumber || '-',
+      p.status || '-',
+      new Date(p.date || p.createdAt).toLocaleDateString()
     ]);
     (doc as any).autoTable({
       head: [['Member', 'Amount', 'Reference', 'Method', 'Status', 'Date']],
@@ -229,17 +229,17 @@ export default function Contributions() {
                         <div className="text-[10px] text-slate-400 font-mono">{payment.phoneNumber || 'M-Pesa Number'}</div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 font-mono text-xs">{payment.payment_reference}</td>
-                    <td className="px-6 py-4 text-xs font-medium text-slate-500 uppercase">{payment.payment_method || "MANUAL"}</td>
+                    <td className="px-6 py-4 font-mono text-xs">{payment.reference}</td>
+                    <td className="px-6 py-4 text-xs font-medium text-slate-500 uppercase">{payment.phoneNumber || "MANUAL"}</td>
                     <td className="px-6 py-4 font-bold text-emerald-600">KES {payment.amount.toLocaleString()}</td>
                     <td className="px-6 py-4">
                       <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded text-xs font-bold">
-                        {payment.payment_status}
+                        {payment.status}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-xs">
-                      <div>{new Date(payment.paid_at).toLocaleDateString()}</div>
-                      <div className="text-[10px] text-slate-400">{new Date(payment.paid_at).toLocaleTimeString()}</div>
+                      <div>{new Date(payment.date).toLocaleDateString()}</div>
+                      <div className="text-[10px] text-slate-400">{new Date(payment.date).toLocaleTimeString()}</div>
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex justify-end gap-2">
