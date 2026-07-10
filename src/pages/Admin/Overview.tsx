@@ -1,3 +1,4 @@
+import { useAuth } from '../../components/AuthProvider';
 import { useSupabase } from '../../components/SupabaseProvider';
 import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
@@ -5,6 +6,7 @@ import { Users, CreditCard, TrendingUp, AlertCircle, ArrowUpRight, ArrowDownRigh
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 export default function AdminOverview() {
+  const { token } = useAuth();
   const [stats, setStats] = useState({ members: 0, collected: 0, expenses: 0, balance: 0 });
   const [payments, setPayments] = useState<any[]>([]);
 
@@ -36,7 +38,7 @@ export default function AdminOverview() {
   async function fetchStats() {
     try {
       const res = await fetch('/api/stats', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) setStats(await res.json());
     } catch (e) {
@@ -47,7 +49,7 @@ export default function AdminOverview() {
   async function fetchPayments() {
     try {
       const res = await fetch('/api/payments', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) setPayments(await res.json());
     } catch (e) {

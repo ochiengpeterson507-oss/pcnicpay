@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../components/AuthProvider';
+import { useSupabase } from '../components/SupabaseProvider';
 import { Wallet, Loader2 } from 'lucide-react';
 
 export default function Register() {
@@ -10,6 +11,7 @@ export default function Register() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
+  const supabase = useSupabase();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -18,28 +20,60 @@ export default function Register() {
     setLoading(true);
     
     try {
-      const res = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password }),
+      if (!supabase) throw new Error('Supabase not connected');
+
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            name: name,
+          }
+        }
       });
-      if (!res.ok) {
-        const text = await res.text();
-        let errorMsg = 'Failed to authenticate';
-        try { errorMsg = JSON.parse(text).error || errorMsg; } catch (e) { console.error('Non-JSON error response:', text); }
-        setError(errorMsg);
-        return;
+
+      if (signUpError) throw signUpError;
+      if (!data.user) throw new Error('Failed to create account');
+
+      // Note: we can optionally hit a backend endpoint or use a trigger to create the public.User record.
+      // But if we have anon access we can try inserting it directly:
+      const { count } = await supabase.from('User').select('*', { count: 'exact', head: true });
+      const isFirstUser = count === 0;
+
+      const { error: insertError } = await supabase.from('User').insert({
+        id: data.user.id,
+        email: email,
+        name: name,
+        passwordHash: 'supabase-auth', // Not used anymore
+        role: isFirstUser ? 'ADMIN' : 'MEMBER',
+        updatedAt: new Date().toISOString()
+      });
+
+      // If insert fails (maybe due to RLS), it might be handled by backend. We ignore for now if it fails.
+      if (insertError) {
+        console.warn('Failed to insert public user (maybe handled by trigger):', insertError);
       }
-      const data = await res.json();
       
-      if (!res.ok) {
-        throw new Error(data.error || 'Registration failed');
+      if (data.session) {
+        const { data: profile } = await supabase
+          .from('User')
+          .select('*')
+          .eq('id', data.session.user.id)
+          .single();
+          
+        login(data.session.access_token, {
+          id: data.session.user.id,
+          name: profile?.name || name,
+          email: data.session.user.email || '',
+          role: profile?.role || (isFirstUser ? 'ADMIN' : 'MEMBER'),
+          avatarUrl: profile?.avatarUrl,
+          phone: profile?.phone
+        });
       }
       
-      login(data.token, data.user);
       navigate('/dashboard');
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Registration failed');
     } finally {
       setLoading(false);
     }
@@ -55,7 +89,6 @@ export default function Register() {
           Join the Till
         </h2>
       </div>
-
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-slate-800/50 backdrop-blur-xl py-8 px-4 shadow-2xl shadow-black/50 sm:rounded-3xl sm:px-10 border border-white/10">
           <form className="space-y-6" onSubmit={handleSubmit}>
@@ -91,7 +124,6 @@ export default function Register() {
                 />
               </div>
             </div>
-
             <div>
               <label className="block text-sm font-medium text-slate-300">Password</label>
               <div className="mt-2">
@@ -105,7 +137,6 @@ export default function Register() {
                 />
               </div>
             </div>
-
             <div>
               <button
                 type="submit"
@@ -117,7 +148,6 @@ export default function Register() {
               </button>
             </div>
           </form>
-
           <div className="mt-6 text-center text-sm">
             <span className="text-slate-400">Already a member?</span>{' '}
             <Link to="/login" className="font-semibold text-emerald-400 hover:text-emerald-300 transition-colors">

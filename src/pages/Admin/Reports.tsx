@@ -1,8 +1,10 @@
+import { useAuth } from '../../components/AuthProvider';
 import { useSupabase } from '../../components/SupabaseProvider';
 import React, { useState, useEffect } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend } from 'recharts';
 
 export default function Reports() {
+  const { token } = useAuth();
   const [payments, setPayments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -10,7 +12,7 @@ export default function Reports() {
   const supabase = useSupabase();
 
   function fetchPayments() {
-    fetch('/api/payments', { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } })
+    fetch('/api/payments', { headers: { 'Authorization': `Bearer ${token}` } })
       .then(res => res.ok ? res.json() : [])
       .then(data => { setPayments(data); setLoading(false); })
       .catch(() => setLoading(false));

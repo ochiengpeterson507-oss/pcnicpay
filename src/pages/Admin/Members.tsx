@@ -1,8 +1,10 @@
+import { useAuth } from '../../components/AuthProvider';
 import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { Search, MoreVertical, Shield, UserX, UserCheck, Trash2, Edit } from 'lucide-react';
 
 export default function Members() {
+  const { token } = useAuth();
   const [members, setMembers] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
@@ -14,7 +16,7 @@ export default function Members() {
   async function fetchMembers() {
     try {
       const res = await fetch('/api/users', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) setMembers(await res.json());
     } catch (e) {
@@ -35,7 +37,7 @@ export default function Members() {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}` 
+          'Authorization': `Bearer ${token}` 
         },
         body: JSON.stringify(editingMember)
       });
@@ -54,7 +56,7 @@ export default function Members() {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}` 
+          'Authorization': `Bearer ${token}` 
         },
         body: JSON.stringify({ role })
       });

@@ -9,6 +9,7 @@ interface PaystackPaymentModalProps {
 }
 
 export default function PaystackPaymentModal({ isOpen, onClose, onSuccessCallback }: PaystackPaymentModalProps) {
+  const { token } = useAuth();
   const { user } = useAuth();
   const [paymentAmount, setPaymentAmount] = useState('');
   const [phoneNumber, setPhoneNumber] = useState(user?.phone || '');
@@ -47,7 +48,7 @@ export default function PaystackPaymentModal({ isOpen, onClose, onSuccessCallbac
            method: 'POST',
            headers: {
              'Content-Type': 'application/json',
-             'Authorization': `Bearer ${localStorage.getItem('token')}`
+             'Authorization': `Bearer ${token}`
            },
            body: JSON.stringify({ reference: reference.reference })
         });
@@ -88,7 +89,7 @@ export default function PaystackPaymentModal({ isOpen, onClose, onSuccessCallbac
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
           amount: parseInt(paymentAmount),

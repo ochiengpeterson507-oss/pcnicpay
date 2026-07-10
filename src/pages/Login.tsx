@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../components/AuthProvider';
+import { useSupabase } from '../components/SupabaseProvider';
 import { Wallet, Loader2 } from 'lucide-react';
 
 export default function Login() {
@@ -9,6 +10,7 @@ export default function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
+  const supabase = useSupabase();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -17,28 +19,34 @@ export default function Login() {
     setLoading(true);
     
     try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+      if (!supabase) throw new Error('Supabase not connected');
+      
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password
       });
-      if (!res.ok) {
-        const text = await res.text();
-        let errorMsg = 'Failed to authenticate';
-        try { errorMsg = JSON.parse(text).error || errorMsg; } catch (e) { console.error('Non-JSON error response:', text); }
-        setError(errorMsg);
-        return;
-      }
-      const data = await res.json();
+
+      if (authError) throw authError;
+      if (!data.session) throw new Error('Failed to get session');
       
-      if (!res.ok) {
-        throw new Error(data.error || 'Login failed');
-      }
+      const { data: profile } = await supabase
+        .from('User')
+        .select('*')
+        .eq('id', data.session.user.id)
+        .single();
+        
+      login(data.session.access_token, {
+        id: data.session.user.id,
+        name: profile?.name || data.session.user.email?.split('@')[0] || 'User',
+        email: data.session.user.email || '',
+        role: profile?.role || 'MEMBER',
+        avatarUrl: profile?.avatarUrl,
+        phone: profile?.phone
+      });
       
-      login(data.token, data.user);
       navigate('/dashboard');
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Failed to authenticate');
     } finally {
       setLoading(false);
     }
@@ -54,7 +62,6 @@ export default function Login() {
           Sign in to PicnicPay
         </h2>
       </div>
-
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-slate-800/50 backdrop-blur-xl py-8 px-4 shadow-2xl shadow-black/50 sm:rounded-3xl sm:px-10 border border-white/10">
           <form className="space-y-6" onSubmit={handleSubmit}>
@@ -76,7 +83,6 @@ export default function Login() {
                 />
               </div>
             </div>
-
             <div>
               <label className="block text-sm font-medium text-slate-300">Password</label>
               <div className="mt-2">
@@ -90,7 +96,6 @@ export default function Login() {
                 />
               </div>
             </div>
-
             <div>
               <button
                 type="submit"
@@ -102,7 +107,6 @@ export default function Login() {
               </button>
             </div>
           </form>
-
           <div className="mt-6 text-center text-sm">
             <span className="text-slate-400">Don't have an account?</span>{' '}
             <Link to="/register" className="font-semibold text-emerald-400 hover:text-emerald-300 transition-colors">

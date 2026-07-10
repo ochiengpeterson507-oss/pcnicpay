@@ -1,9 +1,11 @@
+import { useAuth } from '../../components/AuthProvider';
 import { useSupabase } from '../../components/SupabaseProvider';
 import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { Plus, Search, DollarSign, Receipt, Filter } from 'lucide-react';
 
 export default function Expenses() {
+  const { token } = useAuth();
   const [expenses, setExpenses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -30,7 +32,7 @@ export default function Expenses() {
   async function fetchExpenses() {
     try {
       const res = await fetch('/api/expenses', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) setExpenses(await res.json());
     } catch (e) {
@@ -47,7 +49,7 @@ export default function Expenses() {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}` 
+          'Authorization': `Bearer ${token}` 
         },
         body: JSON.stringify({
           ...newExpense,
@@ -69,7 +71,7 @@ export default function Expenses() {
     try {
       const res = await fetch(`/api/expenses/${id}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
         setExpenses(expenses.filter(e => e.id !== id));
@@ -87,7 +89,7 @@ export default function Expenses() {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}` 
+          'Authorization': `Bearer ${token}` 
         },
         body: JSON.stringify({
           ...editingExpense,

@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useSupabase } from './SupabaseProvider';
 
 type User = {
   id: string;
@@ -21,25 +22,37 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
+  const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const supabase = useSupabase();
 
   useEffect(() => {
     async function checkAuth() {
-      if (!token) {
-        setIsLoading(false);
+      if (!supabase) {
         return;
       }
       try {
-        const res = await fetch('/api/user/me', {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        if (res.ok) {
-          const userData = await res.json();
-          setUser(userData);
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          setToken(session.access_token);
+          // Get additional user profile data from public.User table
+          const { data: profile } = await supabase
+            .from('User')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+            
+          setUser({
+            id: session.user.id,
+            name: profile?.name || session.user.email?.split('@')[0] || 'User',
+            email: session.user.email || '',
+            role: profile?.role || 'MEMBER',
+            avatarUrl: profile?.avatarUrl,
+            phone: profile?.phone
+          });
         } else {
           setToken(null);
-          localStorage.removeItem('token');
+          setUser(null);
         }
       } catch (e) {
         console.error(e);
@@ -47,17 +60,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsLoading(false);
       }
     }
+    
     checkAuth();
-  }, [token]);
+
+    if (supabase) {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        if (session) {
+          setToken(session.access_token);
+          const { data: profile } = await supabase
+            .from('User')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+            
+          setUser({
+            id: session.user.id,
+            name: profile?.name || session.user.email?.split('@')[0] || 'User',
+            email: session.user.email || '',
+            role: profile?.role || 'MEMBER',
+            avatarUrl: profile?.avatarUrl,
+            phone: profile?.phone
+          });
+        } else {
+          setToken(null);
+          setUser(null);
+        }
+      });
+      return () => {
+        subscription.unsubscribe();
+      };
+    }
+  }, [supabase]);
 
   const login = (newToken: string, userData: User) => {
-    localStorage.setItem('token', newToken);
     setToken(newToken);
     setUser(userData);
   };
 
-  const logout = () => {
-    localStorage.removeItem('token');
+  const logout = async () => {
+    if (supabase) {
+      await supabase.auth.signOut();
+    }
     setToken(null);
     setUser(null);
   };

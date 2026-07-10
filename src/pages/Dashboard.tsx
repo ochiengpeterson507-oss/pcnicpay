@@ -4,12 +4,10 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../components/AuthProvider';
 import jsPDF from 'jspdf';
 import { motion } from 'framer-motion';
-import { io } from 'socket.io-client';
 import { LogOut } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 import AdminDashboard from '../components/AdminDashboard';
-const socket = io();
 
 export default function Dashboard() {
   const { user, logout } = useAuth();
@@ -30,13 +28,8 @@ export default function Dashboard() {
     fetchPayments();
     
     // Existing socket for push notifications from backend simulation
-    socket.on('new-payment', (payment) => {
-      setPayments((prev) => [payment, ...prev]);
-      fetchStats();
-    });
-    socket.on('payment-failed', (data) => {
-      console.log('Payment failed:', data);
-    });
+    // socket.on disabled
+    
     
     // Supabase Realtime
     let channel: any;
@@ -53,8 +46,8 @@ export default function Dashboard() {
     }
 
     return () => {
-      socket.off('new-payment');
-      socket.off('payment-failed');
+      // socket.off('new-payment');
+      // socket.off('payment-failed');
       if (channel) supabase.removeChannel(channel);
     };
   }, [supabase]);

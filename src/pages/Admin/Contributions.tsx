@@ -1,3 +1,4 @@
+import { useAuth } from '../../components/AuthProvider';
 import { useSupabase } from '../../components/SupabaseProvider';
 import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
@@ -7,6 +8,7 @@ import 'jspdf-autotable';
 import { Search, Download, Filter, Plus, Edit, Trash2 } from 'lucide-react';
 
 export default function Contributions() {
+  const { token } = useAuth();
   const [payments, setPayments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -21,7 +23,7 @@ export default function Contributions() {
   const [members, setMembers] = useState<any[]>([]);
 
   useEffect(() => {
-    fetch('/api/users', { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` } })
+    fetch('/api/users', { headers: { 'Authorization': `Bearer ${token}` } })
       .then(res => res.ok ? res.json() : [])
       .then(setMembers)
       .catch(console.error);
@@ -47,7 +49,7 @@ export default function Contributions() {
   async function fetchPayments() {
     try {
       const res = await fetch('/api/payments', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) setPayments(await res.json());
     } catch (e) {
@@ -70,7 +72,7 @@ export default function Contributions() {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}` 
+          'Authorization': `Bearer ${token}` 
         },
         body: JSON.stringify({ ...newPayment, amount: parseFloat(newPayment.amount) })
       });
@@ -91,7 +93,7 @@ export default function Contributions() {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}` 
+          'Authorization': `Bearer ${token}` 
         },
         body: JSON.stringify({ ...editingPayment, amount: parseFloat(editingPayment.amount) })
       });
@@ -109,7 +111,7 @@ export default function Contributions() {
     try {
       const res = await fetch(`/api/payments/${id}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
         setPayments(payments.filter(p => p.id !== id));

@@ -4,6 +4,8 @@ import path from 'path';
 import crypto from 'crypto';
 import cors from 'cors';
 import { createServer as createHttpServer } from 'http';
+import { Server as SocketIOServer } from 'socket.io';
+import { createServer as createViteServer } from 'vite';
 import { createClient } from '@supabase/supabase-js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -26,9 +28,31 @@ export const app = express();
 app.use(cors());
 app.use(express.json());
 
-const emitEvent = (event, data) => { /* socket.io disabled on vercel */ };
+let io = null;
+const emitEvent = (event, data) => {
+  if (io) {
+    emitEvent(event, data);
+  }
+};
 
-const JWT_SECRET = process.env.JWT_SECRET || 'picnicpay_super_secret_key_change_me_in_production';
+async function startServer() {
+  const PORT = 3000;
+  const httpServer = createHttpServer(app);
+  io = new SocketIOServer(httpServer, {
+    cors: {
+      origin: '*',
+    }
+  });
+
+  // Socket.IO
+  io.on('connection', (socket) => {
+    console.log('Client connected:', socket.id);
+    socket.on('disconnect', () => {
+      console.log('Client disconnected:', socket.id);
+    });
+  });
+
+  const JWT_SECRET = process.env.JWT_SECRET || 'picnicpay_super_secret_key_change_me_in_production';
 
   // API Routes
   const apiRouter = express.Router();
@@ -78,20 +102,17 @@ const JWT_SECRET = process.env.JWT_SECRET || 'picnicpay_super_secret_key_change_
     }
   });
 
-  // Auth Middleware using Supabase
-  const authenticateToken = async (req: any, res: any, next: any) => {
+  // Auth Middleware
+  const authenticateToken = (req: any, res: any, next: any) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
     if (token == null) return res.sendStatus(401);
 
-    const { data: { user }, error } = await getSupabase().auth.getUser(token);
-    if (error || !user) {
-      return res.sendStatus(403);
-    }
-    
-    const { data: dbUser } = await getSupabase().from('User').select('role').eq('id', user.id).single();
-    req.user = { id: user.id, email: user.email, role: dbUser?.role || 'MEMBER' };
-    next();
+    jwt.verify(token, JWT_SECRET, (err: any, user: any) => {
+      if (err) return res.sendStatus(403);
+      req.user = user;
+      next();
+    });
   };
 
 
@@ -517,26 +538,8 @@ const JWT_SECRET = process.env.JWT_SECRET || 'picnicpay_super_secret_key_change_
 
   app.use('/api', apiRouter);
 
-async function startServer() {
-  const PORT = 3000;
-  const httpServer = createHttpServer(app);
-  
-  socketIoInstance = new SocketIOServer(httpServer, {
-    cors: {
-      origin: '*',
-    }
-  });
-
-  socketIoInstance.on('connection', (socket) => {
-    console.log('Client connected:', socket.id);
-    socket.on('disconnect', () => {
-      console.log('Client disconnected:', socket.id);
-    });
-  });
-
   // Vite middleware for development
   if (process.env.NODE_ENV !== 'production') {
-    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
@@ -555,6 +558,4 @@ async function startServer() {
   });
 }
 
-if (process.env.NODE_ENV !== 'production' || process.env.IS_STANDALONE) {
-  startServer().catch(console.error);
-}
+startServer().catch(console.error);

@@ -1,9 +1,11 @@
+import { useAuth } from '../../components/AuthProvider';
 import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { Bell, Check } from 'lucide-react';
 import { useSupabase } from '../../components/SupabaseProvider';
 
 export default function Notifications() {
+  const { token } = useAuth();
   const [notifications, setNotifications] = useState<any[]>([]);
   const supabase = useSupabase();
 
@@ -23,7 +25,7 @@ export default function Notifications() {
   async function fetchNotifications() {
     try {
       const res = await fetch('/api/notifications', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) setNotifications(await res.json());
     } catch (e) {
@@ -35,7 +37,7 @@ export default function Notifications() {
     try {
       await fetch(`/api/notifications/${id}/read`, {
         method: 'PUT',
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
       setNotifications(notifications.map(n => n.id === id ? { ...n, read: true } : n));
     } catch (e) {
