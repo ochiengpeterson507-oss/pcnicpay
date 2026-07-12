@@ -29,6 +29,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     async function checkAuth() {
       if (!supabase) {
+        setIsLoading(false);
         return;
       }
       try {
@@ -62,6 +63,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     
     checkAuth();
+    
+    // Safety fallback
+    const timer = setTimeout(() => { setIsLoading(false); }, 3000);
 
     if (supabase) {
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
@@ -87,9 +91,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       });
       return () => {
+        clearTimeout(timer);
         subscription.unsubscribe();
       };
     }
+    
+    return () => clearTimeout(timer);
   }, [supabase]);
 
   const login = (newToken: string, userData: User) => {

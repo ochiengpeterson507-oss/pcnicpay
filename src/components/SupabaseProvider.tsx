@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import SupabaseDiagnostic from './SupabaseDiagnostic';
 
 const SupabaseContext = createContext<SupabaseClient | null>(null);
 
@@ -17,6 +18,9 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
       return;
     }
+    
+    // Safety fallback
+    const timer = setTimeout(() => { setLoading(false); }, 4000);
 
     // Fallback to fetching config from backend
     fetch('/api/config')
@@ -35,11 +39,26 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       })
       .finally(() => {
         setLoading(false);
+        clearTimeout(timer);
       });
+      
+    return () => clearTimeout(timer);
   }, []);
 
-  if (loading) return <div className="h-screen flex items-center justify-center">Loading Supabase Config...</div>;
-  if (!supabase) return <div className="h-screen flex flex-col items-center justify-center text-red-500">Failed to connect to Supabase. Please check your environment variables.</div>;
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center font-sans text-emerald-400">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-8 h-8 border-4 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin" />
+          <p>Connecting to backend...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!supabase) {
+    return <SupabaseDiagnostic />;
+  }
 
   return (
     <SupabaseContext.Provider value={supabase}>

@@ -6,4 +6,5 @@ code = code.replace(
   "let socketIoInstance = null;\nconst emitEvent = (event, data) => { if (socketIoInstance) socketIoInstance.emit(event, data); };"
 );
 
+// We still have `socketIoInstance = new SocketIOServer...` inside startServer. It will correctly reassign the outer `socketIoInstance`.
 fs.writeFileSync('server.ts', code);

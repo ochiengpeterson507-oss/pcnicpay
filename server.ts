@@ -5,6 +5,7 @@ import crypto from 'crypto';
 import cors from 'cors';
 import { createServer as createHttpServer } from 'http';
 import { createClient } from '@supabase/supabase-js';
+import { Server as SocketIOServer } from 'socket.io';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
@@ -25,8 +26,10 @@ function getSupabase() {
 export const app = express();
 app.use(cors());
 app.use(express.json());
+app.use((req, res, next) => { console.log(req.method, req.url); next(); });
 
-const emitEvent = (event, data) => { /* socket.io disabled on vercel */ };
+let socketIoInstance = null;
+const emitEvent = (event, data) => { if (socketIoInstance) socketIoInstance.emit(event, data); };
 
 const JWT_SECRET = process.env.JWT_SECRET || 'picnicpay_super_secret_key_change_me_in_production';
 

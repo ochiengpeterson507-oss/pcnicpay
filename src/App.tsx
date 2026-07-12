@@ -15,6 +15,7 @@ import Contributions from './pages/Admin/Contributions';
 import Reports from './pages/Admin/Reports';
 
 import Notifications from './pages/Admin/Notifications';
+import SupabaseDiagnostic from './components/SupabaseDiagnostic';
 
 
 
@@ -36,6 +37,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/diagnostic" element={<SupabaseDiagnostic />} />
         <Route path="/register" element={<Register />} />
         
         {/* Regular Member Dashboard */}
