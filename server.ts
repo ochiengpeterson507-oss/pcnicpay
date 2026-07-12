@@ -208,6 +208,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'picnicpay_super_secret_key_change_
         return res.status(400).json({ error: `Currency ${currency} is not supported by Paystack.` });
       }
 
+      
       const response = await fetch('https://api.paystack.co/transaction/initialize', {
         method: 'POST',
         headers: {
@@ -221,7 +222,21 @@ const JWT_SECRET = process.env.JWT_SECRET || 'picnicpay_super_secret_key_change_
           reference: new Date().getTime().toString()
         })
       });
+      
+      const contentType = response.headers.get("content-type");
+      if (!response.ok) {
+          const text = await response.text();
+          console.error("Paystack Init Error:", response.status, text);
+          throw new Error(text);
+      }
+      if (!contentType?.includes("application/json")) {
+          const text = await response.text();
+          console.error("Paystack Init HTML instead of JSON:", response.status, text);
+          throw new Error(`Expected JSON but received:\n${text.substring(0, 200)}`);
+      }
+      
       const data = await response.json();
+
       
       if (!data.status) {
         if (data.message && data.message.toLowerCase().includes('currency not supported')) {
@@ -244,13 +259,27 @@ const JWT_SECRET = process.env.JWT_SECRET || 'picnicpay_super_secret_key_change_
       const { reference } = req.body;
       const userId = req.user.id;
       
+      
       const response = await fetch(`https://api.paystack.co/transaction/verify/${reference}`, {
         headers: {
           Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`
         }
       });
       
+      const contentType = response.headers.get("content-type");
+      if (!response.ok) {
+          const text = await response.text();
+          console.error("Paystack Verify Error:", response.status, text);
+          throw new Error(text);
+      }
+      if (!contentType?.includes("application/json")) {
+          const text = await response.text();
+          console.error("Paystack Verify HTML instead of JSON:", response.status, text);
+          throw new Error(`Expected JSON but received:\n${text.substring(0, 200)}`);
+      }
+            
       const data = await response.json();
+
       
       if (data.status && data.data.status === 'success') {
         const amount = data.data.amount / 100;
@@ -519,6 +548,12 @@ const JWT_SECRET = process.env.JWT_SECRET || 'picnicpay_super_secret_key_change_
   });
 
   app.use('/api', apiRouter);
+app.use('/api', (req, res) => res.status(404).json({ error: 'API Route Not Found' }));
+
+app.use((err, req, res, next) => {
+  console.error('Express Error:', err);
+  res.status(err.status || 500).json({ success: false, error: err.message || 'Internal Server Error' });
+});
 
 async function startServer() {
   const PORT = 3000;
