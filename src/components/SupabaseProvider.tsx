@@ -24,8 +24,16 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
 
     // Fallback to fetching config from backend
     fetch('/api/config')
-      .then(res => {
-        if (!res.ok) throw new Error('Config fetch failed');
+      .then(async res => {
+        const contentType = res.headers.get("content-type");
+        if (!res.ok) {
+            const text = await res.text();
+            throw new Error(text);
+        }
+        if (!contentType?.includes("application/json")) {
+            const text = await res.text();
+            throw new Error(`Expected JSON but received:\n${text.substring(0, 100)}...`);
+        }
         return res.json();
       })
       .then(config => {

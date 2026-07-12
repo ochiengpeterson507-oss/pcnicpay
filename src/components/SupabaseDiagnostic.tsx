@@ -19,7 +19,20 @@ export default function SupabaseDiagnostic() {
       if (!envUrl || !envKey) {
         // Fallback to API config
         const res = await fetch('/api/config');
-        if (!res.ok) throw new Error('Failed to fetch config from backend.');
+        const contentType = res.headers.get("content-type");
+        
+        if (!res.ok) {
+            const text = await res.text();
+            throw new Error(text);
+        }
+        
+        if (!contentType?.includes("application/json")) {
+            const text = await res.text();
+            throw new Error(
+                `Expected JSON but received:\n${text.substring(0, 100)}...`
+            );
+        }
+        
         const config = await res.json();
         envUrl = config.supabaseUrl;
         envKey = config.supabaseAnonKey;
@@ -103,6 +116,7 @@ export default function SupabaseDiagnostic() {
                     <li>Verify <code className="text-indigo-300 bg-indigo-500/10 px-1 py-0.5 rounded">NEXT_PUBLIC_SUPABASE_ANON_KEY</code> is set correctly.</li>
                     <li>Ensure your Supabase project is active and not paused.</li>
                     <li>Check if CORS is properly configured in your Supabase project settings.</li>
+                    <li>If deployed to Vercel, ensure you've configured rewrites to route <code className="text-indigo-300 bg-indigo-500/10 px-1 py-0.5 rounded">/api</code> requests correctly.</li>
                   </ul>
                 </div>
               </div>
