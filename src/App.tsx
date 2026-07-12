@@ -13,8 +13,11 @@ import Expenses from './pages/Admin/Expenses';
 import Contributions from './pages/Admin/Contributions';
 
 import Reports from './pages/Admin/Reports';
+import Posters from './pages/Admin/Posters';
 
 import Notifications from './pages/Admin/Notifications';
+import Announcements from './pages/Admin/Announcements';
+import Gallery from './pages/Admin/Gallery';
 import SupabaseDiagnostic from './components/SupabaseDiagnostic';
 
 
@@ -59,10 +62,11 @@ export default function App() {
           <Route path="contributions" element={<Contributions />} />
           <Route path="expenses" element={<Expenses />} />
           <Route path="events" element={<div className="p-4">Events (Coming Soon)</div>} />
-          <Route path="announcements" element={<div className="p-4">Announcements (Coming Soon)</div>} />
+          <Route path="announcements" element={<Announcements />} />
+          <Route path="posters" element={<Posters />} />
           <Route path="reports" element={<Reports />} />
           <Route path="notifications" element={<Notifications />} />
-          <Route path="gallery" element={<div className="p-4">Gallery (Coming Soon)</div>} />
+          <Route path="gallery" element={<Gallery />} />
           <Route path="audit" element={<div className="p-4">Audit Logs (Coming Soon)</div>} />
           <Route path="settings" element={<div className="p-4">Settings (Coming Soon)</div>} />
         </Route>

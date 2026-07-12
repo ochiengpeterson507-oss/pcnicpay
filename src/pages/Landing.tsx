@@ -5,6 +5,12 @@ import { useAuth } from '../components/AuthProvider';
 import { Wallet, ShieldCheck, Users, Activity } from 'lucide-react';
 
 export default function Landing() {
+  const [posters, setPosters] = React.useState<any[]>([]);
+  React.useEffect(() => {
+    fetch('/api/posters').then(res => res.json()).then(data => {
+      if (Array.isArray(data)) setPosters(data.filter((p: any) => p.isActive));
+    }).catch(() => {});
+  }, []);
   const { user } = useAuth();
   
   return (

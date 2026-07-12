@@ -5,7 +5,7 @@ import { useAuth } from '../components/AuthProvider';
 import jsPDF from 'jspdf';
 import { motion } from 'framer-motion';
 import { LogOut } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 
 import AdminDashboard from '../components/AdminDashboard';
 
@@ -16,6 +16,9 @@ export default function Dashboard() {
   const [payments, setPayments] = useState<any[]>([]);
 
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [posters, setPosters] = useState<any[]>([]);
+  const [announcements, setAnnouncements] = useState<any[]>([]);
+  const [galleryItems, setGalleryItems] = useState<any[]>([]);
 
   
 
@@ -26,6 +29,9 @@ export default function Dashboard() {
   useEffect(() => {
     fetchStats();
     fetchPayments();
+    fetchPosters();
+    fetchAnnouncements();
+    fetchGallery();
     
     // Existing socket for push notifications from backend simulation
     // socket.on disabled
@@ -42,13 +48,17 @@ export default function Dashboard() {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'Expense' }, payload => {
           fetchStats();
         })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'Announcement' }, payload => {
+          fetchAnnouncements();
+    fetchGallery();
+        })
         .subscribe();
     }
 
     return () => {
       // socket.off('new-payment');
       // socket.off('payment-failed');
-      if (channel) supabase.removeChannel(channel);
+      if (channel && supabase) supabase.removeChannel(channel);
     };
   }, [supabase]);
 
@@ -78,6 +88,51 @@ export default function Dashboard() {
     
     doc.save(`receipt-${payment.reference}.pdf`);
   };
+
+  
+  async function fetchGallery() {
+    if (!supabase) return;
+    try {
+      const { data, error } = await supabase
+        .from('Gallery')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(4);
+      if (!error && data) {
+        setGalleryItems(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch gallery', err);
+    }
+  }
+
+  async function fetchAnnouncements() {
+    if (!supabase) return;
+    try {
+      const { data, error } = await supabase
+        .from('Announcement')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(5);
+      if (!error && data) {
+        setAnnouncements(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch announcements', err);
+    }
+  }
+
+  async function fetchPosters() {
+    try {
+      const res = await fetch('/api/posters');
+      if (res.ok) {
+        const data = await res.json();
+        setPosters(data.filter((p: any) => p.isActive) || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch posters', err);
+    }
+  }
 
   async function fetchStats() {
     try {
@@ -126,6 +181,11 @@ export default function Dashboard() {
           <a href="#" className="text-sm font-medium text-slate-500 hover:text-slate-800 transition-colors">Contributions</a>
           <a href="#" className="text-sm font-medium text-slate-500 hover:text-slate-800 transition-colors">Expenses</a>
           <a href="#" className="text-sm font-medium text-slate-500 hover:text-slate-800 transition-colors">Reports</a>
+          {user?.role === 'ADMIN' && (
+            <Link to="/admin" className="px-3 py-1.5 bg-slate-800 text-white text-xs font-bold rounded-lg shadow-sm hover:bg-slate-700 transition-colors">
+              Admin Panel
+            </Link>
+          )}
         </nav>
         <div className="flex items-center gap-4">
           <div className="text-right hidden sm:block">
@@ -354,33 +414,65 @@ export default function Dashboard() {
           <div className="flex-1 bg-white rounded-2xl border border-slate-100 shadow-sm p-6 flex flex-col">
             <h3 className="font-bold text-slate-800 mb-4">Recent Announcements</h3>
             <div className="space-y-4 flex-1">
-              <div className="flex gap-3">
-                <div className="w-8 h-8 shrink-0 rounded-lg bg-blue-50 flex items-center justify-center text-blue-500">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.167H3.382a.75.75 0 01-.736-.624l-.105-.521a2.01 2.01 0 011.96-2.404h1.411l2.147-6.167a1.76 1.76 0 013.417.592zm3.67 1.326a7.5 7.5 0 010 10.584M19.33 3.33a12.02 12.02 0 010 17.34"></path></svg>
-                </div>
-                <div>
-                  <p className="text-[11px] font-bold text-slate-800">Menu Finalized!</p>
-                  <p className="text-[10px] text-slate-500 leading-tight mt-0.5">The BBQ and vegan options have been added to the list.</p>
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <div className="w-8 h-8 shrink-0 rounded-lg bg-amber-50 flex items-center justify-center text-amber-500">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                </div>
-                <div>
-                  <p className="text-[11px] font-bold text-slate-800">Payment Deadline</p>
-                  <p className="text-[10px] text-slate-500 leading-tight mt-0.5">Please ensure all payments are made by Friday night.</p>
-                </div>
-              </div>
+              {announcements.length === 0 ? (
+                <div className="text-center text-slate-400 text-xs py-4">No recent announcements.</div>
+              ) : (
+                announcements.map((ann) => (
+                  <div key={ann.id} className="flex gap-3">
+                    <div className="w-8 h-8 shrink-0 rounded-lg bg-blue-50 flex items-center justify-center text-blue-500">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.167H3.382a.75.75 0 01-.736-.624l-.105-.521a2.01 2.01 0 011.96-2.404h1.411l2.147-6.167a1.76 1.76 0 013.417.592zm3.67 1.326a7.5 7.5 0 010 10.584M19.33 3.33a12.02 12.02 0 010 17.34"></path></svg>
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-bold text-slate-800">{ann.title}</p>
+                      <p className="text-[10px] text-slate-500 leading-tight mt-0.5">{ann.content}</p>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
 
             {user?.role === 'ADMIN' && (
-              <button className="w-full mt-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-100 flex items-center justify-center gap-2">
+              <Link to="/admin/announcements" className="w-full mt-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-100 flex items-center justify-center gap-2">
                 Post New Announcement
-              </button>
+              </Link>
             )}
           </div>
         </div>
+      
+        {/* Gallery Section */}
+        <div className="col-span-1 md:col-span-12 mt-6">
+          <div className="flex justify-between items-end mb-4">
+            <div>
+              <h3 className="font-bold text-slate-800">Recent Photos</h3>
+              <p className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold mt-1">Group Gallery</p>
+            </div>
+            {user?.role === 'ADMIN' && (
+              <Link to="/admin/gallery" className="text-xs font-bold text-emerald-600 hover:text-emerald-700">
+                Manage Gallery &rarr;
+              </Link>
+            )}
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {galleryItems.length === 0 ? (
+              <div className="col-span-full py-8 text-center bg-white rounded-2xl border border-slate-100 shadow-sm">
+                <p className="text-xs text-slate-400 font-medium">No photos have been uploaded yet.</p>
+              </div>
+            ) : (
+              galleryItems.map(item => (
+                <div key={item.id} className="bg-white rounded-xl overflow-hidden border border-slate-100 shadow-sm group">
+                  <div className="aspect-square bg-slate-100 overflow-hidden">
+                    <img src={item.imageUrl} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                  </div>
+                  <div className="p-3">
+                    <p className="text-xs font-bold text-slate-800 truncate">{item.title}</p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">{new Date(item.created_at).toLocaleDateString()}</p>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
       </main>
 
       {/* Footer Bar */}

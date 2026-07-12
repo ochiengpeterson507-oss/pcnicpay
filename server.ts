@@ -1,5 +1,6 @@
 // @ts-nocheck
 import express from 'express';
+import multer from 'multer';
 import path from 'path';
 import crypto from 'crypto';
 import cors from 'cors';
@@ -35,6 +36,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'picnicpay_super_secret_key_change_
 
   // API Routes
   const apiRouter = express.Router();
+const upload = multer({ storage: multer.memoryStorage() });
 
   apiRouter.post('/auth/register', async (req, res) => {
     try {
@@ -120,14 +122,30 @@ const JWT_SECRET = process.env.JWT_SECRET || 'picnicpay_super_secret_key_change_
   apiRouter.get('/payments', async (req: any, res: any) => {
     try {
       const { data: payments } = await getSupabase().from('Payment')
-        .select('*, user:User(name, avatarUrl)')
+        .select('*')
         .order('date', { ascending: false });
-      res.json(payments || []);
+        
+      const userIds = [...new Set((payments || []).map(p => p.user_id).filter(Boolean))];
+      const { data: users } = await getSupabase().from('User').select('id, name, avatarUrl').in('id', userIds);
+      
+      const userMap = (users || []).reduce((acc, u) => {
+        acc[u.id] = u;
+        return acc;
+      }, {});
+
+      res.json((payments || []).map(p => ({ 
+        ...p, 
+        reference: p.payment_reference, 
+        status: p.payment_status, 
+        userId: p.user_id,
+        user: userMap[p.user_id] || null
+      })));
     } catch (error: any) {
       console.error(error);
       res.status(500).json({ error: error.message || 'Server error' });
     }
   });
+
   
   apiRouter.post('/payments/simulate', async (req, res) => {
     // Webhook simulation for a payment
@@ -135,10 +153,17 @@ const JWT_SECRET = process.env.JWT_SECRET || 'picnicpay_super_secret_key_change_
       const { amount, userId } = req.body;
       const { data: payment, error: insertError } = await getSupabase().from('Payment').insert({
         amount: parseFloat(amount),
-        reference: `REF-${Math.floor(Math.random() * 1000000)}`,
-        userId,
-        status: 'COMPLETED'
-      }).select('*, user:User(name, avatarUrl)').single();
+        payment_reference: `REF-${Math.floor(Math.random() * 1000000)}`,
+        user_id: userId,
+        payment_status: 'COMPLETED'
+      }).select('*').single();
+      if (payment) {
+        const { data: user } = await getSupabase().from('User').select('name, avatarUrl').eq('id', payment.user_id).single();
+        payment.user = user;
+        payment.reference = payment.payment_reference;
+        payment.status = payment.payment_status;
+        payment.userId = payment.user_id;
+      }
       
       emitEvent('new-payment', payment);
       res.json(payment);
@@ -300,7 +325,14 @@ const JWT_SECRET = process.env.JWT_SECRET || 'picnicpay_super_secret_key_change_
             payment_method: data.data.channel,
             payment_channel: data.data.channel,
             paid_at: data.data.paid_at || new Date().toISOString()
-          }).select('*, user:User(name, avatarUrl)').single();
+          }).select('*').single();
+      if (payment) {
+        const { data: user } = await getSupabase().from('User').select('name, avatarUrl').eq('id', payment.user_id).single();
+        payment.user = user;
+        payment.reference = payment.payment_reference;
+        payment.status = payment.payment_status;
+        payment.userId = payment.user_id;
+      }
           
           emitEvent('new-payment', payment);
           
@@ -361,7 +393,14 @@ const JWT_SECRET = process.env.JWT_SECRET || 'picnicpay_super_secret_key_change_
                 payment_method: event.data.channel,
                 payment_channel: event.data.channel,
                 paid_at: event.data.paid_at || new Date().toISOString()
-              }).select('*, user:User(name, avatarUrl)').single();
+              }).select('*').single();
+      if (payment) {
+        const { data: user } = await getSupabase().from('User').select('name, avatarUrl').eq('id', payment.user_id).single();
+        payment.user = user;
+        payment.reference = payment.payment_reference;
+        payment.status = payment.payment_status;
+        payment.userId = payment.user_id;
+      }
               
               emitEvent('new-payment', payment);
               
@@ -396,11 +435,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'picnicpay_super_secret_key_change_
       const { role } = req.body;
       const { data, error } = await getSupabase().from('User').update({ role }).eq('id', req.params.id).select().single();
       if (error) throw error;
-      res.json(data);
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
+
   
   apiRouter.post('/expenses', authenticateToken, requireAdmin, async (req, res) => {
     try {
@@ -410,21 +445,24 @@ const JWT_SECRET = process.env.JWT_SECRET || 'picnicpay_super_secret_key_change_
       }).select().single();
       if (error) throw error;
       emitEvent('new-expense', data);
-      res.json(data);
+
+
+  apiRouter.get('/expenses', authenticateToken, async (req, res) => {
+    try {
+      const { data: expenses, error } = await getSupabase().from('Expense').select('*').order('createdAt', { ascending: false });
+      if (error) throw error;
+      
+      const userIds = [...new Set((expenses || []).map(e => e.recordedById).filter(Boolean))];
+      const { data: users } = await getSupabase().from('User').select('id, name').in('id', userIds);
+      const userMap = (users || []).reduce((acc, u) => { acc[u.id] = u; return acc; }, {});
+      
+      const mapped = (expenses || []).map(e => ({ ...e, user: userMap[e.recordedById] || null }));
+      res.json(mapped);
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
   });
 
-  apiRouter.get('/expenses', authenticateToken, async (req, res) => {
-    try {
-      const { data, error } = await getSupabase().from('Expense').select('*, user:User(name)').order('createdAt', { ascending: false });
-      if (error) throw error;
-      res.json(data);
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
 
   
   apiRouter.get('/config', (req, res) => {
@@ -444,11 +482,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'picnicpay_super_secret_key_change_
         .eq('userId', req.user.id)
         .order('createdAt', { ascending: false });
       if (error) throw error;
-      res.json(data);
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
+
 
   apiRouter.put('/notifications/:id/read', authenticateToken, async (req, res) => {
     try {
@@ -458,13 +492,58 @@ const JWT_SECRET = process.env.JWT_SECRET || 'picnicpay_super_secret_key_change_
         .eq('userId', req.user.id)
         .select();
       if (error) throw error;
+
+
+  
+
+  // Admin CRUD for Posters
+  apiRouter.post('/posters', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+      const { title, description, imageUrl, isActive } = req.body;
+      const { data, error } = await getSupabase().from('Poster').insert({
+        title, description, imageUrl, isActive
+      }).select().single();
+      if (error) throw error;
       res.json(data);
-    } catch (err) {
+    } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
   });
 
-  
+  apiRouter.get('/posters', async (req, res) => {
+    try {
+      const { data, error } = await getSupabase().from('Poster').select('*').order('createdAt', { ascending: false });
+      if (error) throw error;
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  apiRouter.put('/posters/:id', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+      const { title, description, imageUrl, isActive } = req.body;
+      const { data, error } = await getSupabase().from('Poster')
+        .update({ title, description, imageUrl, isActive })
+        .eq('id', req.params.id)
+        .select().single();
+      if (error) throw error;
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  apiRouter.delete('/posters/:id', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+      const { error } = await getSupabase().from('Poster').delete().eq('id', req.params.id);
+      if (error) throw error;
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Admin CRUD for Expenses
   apiRouter.put('/expenses/:id', authenticateToken, requireAdmin, async (req, res) => {
     try {
@@ -474,11 +553,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'picnicpay_super_secret_key_change_
         .eq('id', req.params.id)
         .select().single();
       if (error) throw error;
-      res.json(data);
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
+
 
   apiRouter.delete('/expenses/:id', authenticateToken, requireAdmin, async (req, res) => {
     try {
@@ -495,12 +570,13 @@ const JWT_SECRET = process.env.JWT_SECRET || 'picnicpay_super_secret_key_change_
     try {
       const { amount, reference, date, status } = req.body;
       const { data, error } = await getSupabase().from('Payment')
-        .update({ amount, reference, date, status })
+        .update({ amount, payment_reference: reference, date, payment_status: status })
         .eq('id', req.params.id)
         .select().single();
       if (error) throw error;
-      emitEvent('payment-updated', data);
-      res.json(data);
+      const mappedData = { ...data, reference: data.payment_reference, status: data.payment_status, userId: data.user_id };
+      emitEvent('payment-updated', mappedData);
+      res.json(mappedData);
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
@@ -522,11 +598,15 @@ const JWT_SECRET = process.env.JWT_SECRET || 'picnicpay_super_secret_key_change_
     try {
       const { userId, amount, reference, date, status } = req.body;
       const { data, error } = await getSupabase().from('Payment').insert({
-        userId, amount, reference, date, status, phoneNumber: 'Manual'
-      }).select('*, user:User(name, avatarUrl)').single();
+        user_id: userId, amount, payment_reference: reference, date, payment_status: status, phoneNumber: 'Manual'
+      }).select('*').single();
       if (error) throw error;
-      emitEvent('new-payment', data);
-      res.json(data);
+      
+      const { data: user } = await getSupabase().from('User').select('name, avatarUrl').eq('id', userId).single();
+      
+      const mappedData = { ...data, reference: data.payment_reference, status: data.payment_status, userId: data.user_id, user };
+      emitEvent('new-payment', mappedData);
+      res.json(mappedData);
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
@@ -541,8 +621,35 @@ const JWT_SECRET = process.env.JWT_SECRET || 'picnicpay_super_secret_key_change_
         .eq('id', req.params.id)
         .select().single();
       if (error) throw error;
-      res.json(data);
-    } catch (err) {
+
+
+  
+  apiRouter.post('/upload', authenticateToken, requireAdmin, upload.single('file'), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: 'No file uploaded' });
+      }
+
+      const fileExt = req.file.originalname.split('.').pop();
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const filePath = `${req.user.id}/${fileName}`;
+
+      const { error: uploadError } = await getSupabase().storage
+        .from('gallery')
+        .upload(filePath, req.file.buffer, {
+          contentType: req.file.mimetype,
+          upsert: true
+        });
+
+      if (uploadError) throw uploadError;
+
+      const { data: publicUrlData } = getSupabase().storage
+        .from('gallery')
+        .getPublicUrl(filePath);
+
+      res.json({ url: publicUrlData.publicUrl });
+    } catch (err: any) {
+      console.error('Upload Error:', err);
       res.status(500).json({ error: err.message });
     }
   });
