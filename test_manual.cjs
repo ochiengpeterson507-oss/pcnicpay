@@ -10,19 +10,17 @@ async function test() {
   const userId = users[0].id;
   
   const { data, error } = await supabase.from('Payment').insert({
-    user_id: userId, amount: 1500, payment_reference: 'TEST-333', payment_status: 'COMPLETED', phoneNumber: 'Manual'
+    user_id: userId, amount: 1500, payment_reference: 'TEST-444', payment_status: 'COMPLETED', phoneNumber: 'Manual'
   }).select('*').single();
   
   if (error) console.error(error);
   else {
-      console.log('Success insert:', data);
+      console.log('Success insert:', data.id);
       
       const res = await fetch(`http://127.0.0.1:3000/api/payments`, {
-          // just checking if endpoint works, though it requires token... wait, it doesn't require token for get?
-          // wait, apiRouter.get('/payments') does not have authenticateToken middleware.
       });
       const payments = await res.json();
-      console.log('Fetched via API:', payments.length, payments[0]);
+      console.log('Fetched via API:', payments.length, payments[0] ? payments[0].reference : 'No reference');
   }
 }
 test();

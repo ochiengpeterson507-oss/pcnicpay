@@ -424,19 +424,12 @@ const upload = multer({ storage: multer.memoryStorage() });
     try {
       const { data: users, error } = await getSupabase().from('User').select('*').order('createdAt', { ascending: false });
       if (error) throw error;
-      res.json(users);
-    } catch (err) {
+      res.json(data);
+    } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
   });
 
-  apiRouter.put('/users/:id/role', authenticateToken, requireAdmin, async (req, res) => {
-    try {
-      const { role } = req.body;
-      const { data, error } = await getSupabase().from('User').update({ role }).eq('id', req.params.id).select().single();
-      if (error) throw error;
-
-  
   apiRouter.post('/expenses', authenticateToken, requireAdmin, async (req, res) => {
     try {
       const { title, amount, category, date } = req.body;
@@ -445,7 +438,11 @@ const upload = multer({ storage: multer.memoryStorage() });
       }).select().single();
       if (error) throw error;
       emitEvent('new-expense', data);
-
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
 
   apiRouter.get('/expenses', authenticateToken, async (req, res) => {
     try {
@@ -482,7 +479,11 @@ const upload = multer({ storage: multer.memoryStorage() });
         .eq('userId', req.user.id)
         .order('createdAt', { ascending: false });
       if (error) throw error;
-
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
 
   apiRouter.put('/notifications/:id/read', authenticateToken, async (req, res) => {
     try {
@@ -492,9 +493,11 @@ const upload = multer({ storage: multer.memoryStorage() });
         .eq('userId', req.user.id)
         .select();
       if (error) throw error;
-
-
-  
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
 
   // Admin CRUD for Posters
   apiRouter.post('/posters', authenticateToken, requireAdmin, async (req, res) => {
@@ -553,7 +556,11 @@ const upload = multer({ storage: multer.memoryStorage() });
         .eq('id', req.params.id)
         .select().single();
       if (error) throw error;
-
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
 
   apiRouter.delete('/expenses/:id', authenticateToken, requireAdmin, async (req, res) => {
     try {
@@ -621,9 +628,12 @@ const upload = multer({ storage: multer.memoryStorage() });
         .eq('id', req.params.id)
         .select().single();
       if (error) throw error;
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
 
-
-  
   apiRouter.post('/upload', authenticateToken, requireAdmin, upload.single('file'), async (req, res) => {
     try {
       if (!req.file) {
