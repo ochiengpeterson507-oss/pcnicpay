@@ -16,6 +16,13 @@ export default function Announcements() {
 
   useEffect(() => {
     fetchAnnouncements();
+    if (!supabase) return;
+    const channel = supabase.channel('announcements-updates')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'Announcement' }, () => {
+        fetchAnnouncements();
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
   }, [supabase]);
 
   async function fetchAnnouncements() {

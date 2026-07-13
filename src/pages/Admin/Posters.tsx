@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, Loader2, Image as ImageIcon } from 'lucide-react';
 import { useAuth } from '../../components/AuthProvider';
 import { safeFetchJson, safeFetch } from '../../utils/safeFetch';
+import { useSupabase } from '../../components/SupabaseProvider';
 
 interface Poster {
   id: string;
@@ -14,6 +15,7 @@ interface Poster {
 
 export default function Posters() {
   const { token } = useAuth();
+  const supabase = useSupabase();
   const [posters, setPosters] = useState<Poster[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -29,7 +31,14 @@ export default function Posters() {
 
   useEffect(() => {
     fetchPosters();
-  }, []);
+    if (!supabase) return;
+    const channel = supabase.channel('posters-updates')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'Poster' }, () => {
+        fetchPosters();
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [supabase]);
 
   const fetchPosters = async () => {
     try {

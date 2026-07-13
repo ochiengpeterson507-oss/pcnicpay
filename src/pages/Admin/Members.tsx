@@ -1,17 +1,26 @@
 import { useAuth } from '../../components/AuthProvider';
+import { useSupabase } from '../../components/SupabaseProvider';
 import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { Search, MoreVertical, Shield, UserX, UserCheck, Trash2, Edit } from 'lucide-react';
 
 export default function Members() {
   const { token } = useAuth();
+  const supabase = useSupabase();
   const [members, setMembers] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchMembers();
-  }, []);
+    if (!supabase) return;
+    const channel = supabase.channel('members-updates')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'User' }, () => {
+        fetchMembers();
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [supabase]);
 
   async function fetchMembers() {
     try {

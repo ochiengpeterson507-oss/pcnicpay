@@ -315,7 +315,7 @@ const upload = multer({ storage: multer.memoryStorage() });
           .maybeSingle();
           
         if (!existing) {
-          const { data: payment } = await getSupabase().from('Payment').insert({
+          const { data: payment, error: insertError } = await getSupabase().from('Payment').insert({
             amount,
             currency: data.data.currency || 'KES',
             payment_reference: reference,

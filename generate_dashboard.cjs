@@ -1,7 +1,8 @@
-import PaystackPaymentModal from "../components/PaystackPaymentModal";
+const fs = require('fs');
+
+const code = `import PaystackPaymentModal from "../components/PaystackPaymentModal";
 import { useSupabase } from '../components/SupabaseProvider';
 import React, { useEffect, useState, useMemo } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../components/AuthProvider';
 import jsPDF from 'jspdf';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -18,9 +19,8 @@ export default function Dashboard() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const queryClient = useQueryClient();
-  const { data: stats = { members: 0, collected: 0, expenses: 0, balance: 0 } } = useQuery({ queryKey: ['stats'], queryFn: async () => { const res = await fetch('/api/stats'); return res.json(); }});
-  const { data: payments = [] } = useQuery({ queryKey: ['payments'], queryFn: async () => { const res = await fetch('/api/payments'); return res.json(); }});
+  const [stats, setStats] = useState({ members: 0, collected: 0, expenses: 0, balance: 0 });
+  const [payments, setPayments] = useState<any[]>([]);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [posters, setPosters] = useState<any[]>([]);
   const [announcements, setAnnouncements] = useState<any[]>([]);
@@ -29,8 +29,8 @@ export default function Dashboard() {
   const supabase = useSupabase();
 
   useEffect(() => {
-    queryClient.invalidateQueries({ queryKey: ['stats'] });
-    queryClient.invalidateQueries({ queryKey: ['payments'] });
+    fetchStats();
+    fetchPayments();
     fetchPosters();
     fetchAnnouncements();
     fetchGallery();
@@ -39,11 +39,11 @@ export default function Dashboard() {
     if (supabase) {
       channel = supabase.channel('member-dashboard-updates')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'Payment' }, payload => {
-          queryClient.invalidateQueries({ queryKey: ['stats'] });
-          queryClient.invalidateQueries({ queryKey: ['payments'] });
+          fetchStats();
+          fetchPayments();
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'Expense' }, payload => {
-          queryClient.invalidateQueries({ queryKey: ['stats'] });
+          fetchStats();
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'Announcement' }, payload => {
           fetchAnnouncements();
@@ -62,21 +62,21 @@ export default function Dashboard() {
     doc.text("Picnic Contribution Receipt", 105, 20, { align: 'center' });
     
     doc.setFontSize(12);
-    doc.text(`Date: ${new Date(payment.date || payment.createdAt).toLocaleString()}`, 20, 40);
-    doc.text(`Receipt Number: ${payment.reference}`, 20, 50);
-    doc.text(`Member: ${payment.user?.name || user?.name}`, 20, 60);
+    doc.text(\`Date: \${new Date(payment.date || payment.createdAt).toLocaleString()}\`, 20, 40);
+    doc.text(\`Receipt Number: \${payment.reference}\`, 20, 50);
+    doc.text(\`Member: \${payment.user?.name || user?.name}\`, 20, 60);
     
     doc.setFontSize(14);
-    doc.text(`Amount Paid: KES ${payment.amount.toLocaleString()}`, 20, 80);
+    doc.text(\`Amount Paid: KES \${payment.amount.toLocaleString()}\`, 20, 80);
     
     doc.setFontSize(12);
-    doc.text(`Status: ${payment.status || 'COMPLETED'}`, 20, 90);
-    doc.text(`Payment Method: ${payment.phoneNumber || 'Online'}`, 20, 100);
+    doc.text(\`Status: \${payment.status || 'COMPLETED'}\`, 20, 90);
+    doc.text(\`Payment Method: \${payment.phoneNumber || 'Online'}\`, 20, 100);
     
     doc.setFontSize(10);
     doc.text("Thank you for helping make this picnic unforgettable!", 105, 130, { align: 'center' });
     
-    doc.save(`receipt-${payment.reference}.pdf`);
+    doc.save(\`receipt-\${payment.reference}.pdf\`);
   };
 
   async function fetchGallery() {
@@ -123,7 +123,27 @@ export default function Dashboard() {
     }
   }
 
+  async function fetchStats() {
+    try {
+      const res = await fetch('/api/stats');
+      if (res.ok) {
+        setStats(await res.json());
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
+  async function fetchPayments() {
+    try {
+      const res = await fetch('/api/payments');
+      if (res.ok) {
+        setPayments(await res.json());
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const handleLogout = () => {
     logout();
@@ -151,7 +171,7 @@ export default function Dashboard() {
   const chartData = useMemo(() => {
     if (payments.length === 0) {
       return Array.from({length: 7}).map((_, i) => ({
-        name: `Day ${i+1}`,
+        name: \`Day \${i+1}\`,
         amount: Math.floor(Math.random() * 5000) + (i * 2000)
       }));
     }
@@ -189,11 +209,11 @@ export default function Dashboard() {
             <Link 
               key={item.name} 
               to={item.path}
-              className={`flex items-center gap-3 px-4 py-3 rounded-full text-sm font-semibold transition-all duration-300 ${
+              className={\`flex items-center gap-3 px-4 py-3 rounded-full text-sm font-semibold transition-all duration-300 \${
                 item.name === 'Dashboard' 
                   ? 'bg-emerald-600 text-white shadow-md shadow-emerald-100' 
                   : 'text-slate-500 hover:bg-emerald-50 hover:text-emerald-700'
-              }`}
+              }\`}
             >
               <item.icon className="w-5 h-5" />
               {item.name}
@@ -306,7 +326,7 @@ export default function Dashboard() {
                       className="text-emerald-500"
                       strokeLinecap="round"
                       initial={{ strokeDasharray: "0, 100" }}
-                      animate={{ strokeDasharray: `${progressPercent}, 100` }}
+                      animate={{ strokeDasharray: \`\${progressPercent}, 100\` }}
                       transition={{ duration: 1.5, ease: "easeOut" }}
                       d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                       fill="none"
@@ -358,7 +378,6 @@ export default function Dashboard() {
                     <span className="block text-[10px] font-bold text-amber-600 mt-1">28°C</span>
                   </div>
                 </div>
-                <p className="text-[10px] text-amber-600 font-bold mt-4 relative z-10">☀️ Great day for outdoor fun!</p>
               </motion.div>
             </div>
 
@@ -391,7 +410,7 @@ export default function Dashboard() {
                         </defs>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                         <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} dy={10} />
-                        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} tickFormatter={(val) => `K${val/1000}k`} />
+                        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} tickFormatter={(val) => \`K\${val/1000}k\`} />
                         <Tooltip 
                           contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)' }}
                           labelStyle={{ fontWeight: 'bold', color: '#1e293b' }}
@@ -462,53 +481,6 @@ export default function Dashboard() {
               {/* Right Column */}
               <div className="space-y-8">
                 
-
-                
-                {/* Top Members */}
-                <div className="bg-white p-6 rounded-[24px] border border-slate-100 shadow-sm">
-                  <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-lg font-bold text-slate-800">Top Contributors</h3>
-                    <button className="w-8 h-8 rounded-full bg-slate-50 text-slate-500 flex items-center justify-center hover:bg-slate-100 transition-colors">
-                      <Users className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <div className="space-y-4">
-                    {payments.length === 0 ? (
-                      <p className="text-sm text-slate-500 text-center py-4">No contributors yet.</p>
-                    ) : (
-                      Object.values(payments.reduce((acc, p) => {
-                        const name = p.user?.name || 'Unknown';
-                        if (!acc[name]) acc[name] = { name, amount: 0, online: Math.random() > 0.5 };
-                        acc[name].amount += p.amount;
-                        return acc;
-                      }, {} as any))
-                      .sort((a: any, b: any) => b.amount - a.amount)
-                      .slice(0, 4)
-                      .map((m: any, i) => (
-                        <div key={i} className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className="relative">
-                              <div className="w-10 h-10 rounded-full bg-slate-100 border-2 border-white shadow-sm flex items-center justify-center font-bold text-slate-600">
-                                {m.name.charAt(0)}
-                              </div>
-                              <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${m.online ? 'bg-emerald-500' : 'bg-slate-300'}`}></span>
-                            </div>
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <p className="font-bold text-slate-800 text-sm">{m.name}</p>
-                                {i === 0 && <span className="bg-amber-100 text-amber-600 text-[9px] font-black px-2 py-0.5 rounded-full">TOP</span>}
-                              </div>
-                              <p className="text-[10px] text-slate-400 font-medium">{((m.amount / GOAL) * 100).toFixed(1)}% of goal</p>
-                            </div>
-                          </div>
-                          <p className="text-sm font-black text-slate-700">KES {m.amount.toLocaleString()}</p>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-
-
                 {/* Announcements */}
                 <div className="bg-white p-6 rounded-[24px] border border-slate-100 shadow-sm">
                   <h3 className="text-lg font-bold text-slate-800 mb-6">Announcements</h3>
@@ -575,8 +547,11 @@ export default function Dashboard() {
       <PaystackPaymentModal 
         isOpen={isPaymentModalOpen} 
         onClose={() => setIsPaymentModalOpen(false)} 
-        onSuccessCallback={() => { queryClient.invalidateQueries({ queryKey: ['stats'] }); queryClient.invalidateQueries({ queryKey: ['payments'] }); }} 
+        onSuccessCallback={() => { fetchStats(); fetchPayments(); }} 
       />
     </div>
   );
 }
+`;
+
+fs.writeFileSync('src/pages/Dashboard.tsx', code);

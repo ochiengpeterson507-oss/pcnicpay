@@ -22,7 +22,7 @@ serve(async (req) => {
 
   const bodyText = await req.text();
   
-  // Verify signature
+  // Verify Paystack signature
   const encoder = new TextEncoder();
   const key = await crypto.subtle.importKey(
     "raw",
@@ -69,7 +69,7 @@ serve(async (req) => {
         .maybeSingle();
 
       if (!existingPayment) {
-        // Record payment
+        // Record payment in transactions table
         const { data: payment, error } = await supabase
           .from("Payment")
           .insert({
@@ -87,20 +87,60 @@ serve(async (req) => {
           .single();
 
         if (!error && payment) {
-          // Update member contribution total (Assuming totalContributions exists or just sum queries)
-          // The prompt says "Update the member's contribution total", "Update the overall picnic balance".
-          // If we are calculating it dynamically, inserting is enough. But we will broadcast.
-          
+          // Send Notification
           await supabase.from("Notification").insert({
-            userId: user.id, // Using existing schema field for now if not renamed
+            userId: user.id,
             title: "Payment Received",
             message: `Your contribution of ${data.currency || 'KES'} ${amount} was received successfully.`,
             read: false
           });
+
+          // Update contribution balance table if exists, otherwise recalculate
+          // The prompt mentioned "contribution balance tables"
+          const { data: balanceRecord } = await supabase
+             .from("ContributionBalance")
+             .select("*")
+             .eq("id", "main")
+             .maybeSingle();
+             
+          if (balanceRecord) {
+             await supabase
+               .from("ContributionBalance")
+               .update({ 
+                  total_collected: balanceRecord.total_collected + amount,
+                  updated_at: new Date().toISOString()
+               })
+               .eq("id", "main");
+          } else {
+             // Create if it doesn't exist
+             await supabase
+               .from("ContributionBalance")
+               .insert({ 
+                  id: "main",
+                  total_collected: amount,
+                  updated_at: new Date().toISOString()
+               });
+          }
+
+          // Trigger a realtime update by inserting an event into a dummy realtime_events table or similar
+          // Wait, just updating Payment and ContributionBalance will trigger postgres changes
+          // But we can explicitly notify admins too
+          const { data: admins } = await supabase.from('User').select('id').eq('role', 'ADMIN');
+          if (admins && admins.length > 0) {
+            const adminNotifications = admins.map(admin => ({
+              title: 'New Contribution',
+              message: `A new contribution of ${data.currency || 'KES'} ${amount} was received.`,
+              userId: admin.id
+            }));
+            await supabase.from('Notification').insert(adminNotifications);
+          }
         }
       }
     }
   }
 
-  return new Response("OK", { status: 200 });
+  return new Response(JSON.stringify({ received: true }), { 
+    status: 200, 
+    headers: { "Content-Type": "application/json" } 
+  });
 });

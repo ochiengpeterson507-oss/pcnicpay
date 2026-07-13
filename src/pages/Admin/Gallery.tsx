@@ -18,6 +18,13 @@ export default function Gallery() {
 
   useEffect(() => {
     fetchItems();
+    if (!supabase) return;
+    const channel = supabase.channel('gallery-updates')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'Gallery' }, () => {
+        fetchItems();
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
   }, [supabase]);
 
   async function fetchItems() {
