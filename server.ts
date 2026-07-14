@@ -14,8 +14,8 @@ let supabaseClient: ReturnType<typeof createClient> | null = null;
 
 function getSupabase() {
   if (!supabaseClient) {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
     if (!supabaseUrl || !supabaseKey) {
       throw new Error('Supabase configuration is missing. Please provide NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in your environment variables.');
     }
@@ -26,7 +26,14 @@ function getSupabase() {
 
 export const app = express();
 app.use(cors());
-app.use(express.json());
+app.use((req, res, next) => {
+  if (req.body && Object.keys(req.body).length > 0) {
+    // Vercel already parsed it
+    next();
+  } else {
+    express.json()(req, res, next);
+  }
+});
 app.use((req, res, next) => { console.log(req.method, req.url); next(); });
 
 let socketIoInstance = null;
@@ -205,6 +212,7 @@ const upload = multer({ storage: multer.memoryStorage() });
   apiRouter.post('/payments/paystack/initialize', authenticateToken, async (req: any, res: any) => {
     try {
       const { amount, currency = 'KES' } = req.body;
+      if (!amount || isNaN(amount)) return res.status(400).json({ error: 'Valid amount is required in req.body. Found: ' + JSON.stringify(req.body) });
       if (!process.env.PAYSTACK_SECRET_KEY) {
         return res.status(400).json({ error: 'Paystack Secret Key is missing. Please configure it in settings.' });
       }
@@ -282,6 +290,8 @@ const upload = multer({ storage: multer.memoryStorage() });
   apiRouter.post('/payments/paystack/verify', authenticateToken, async (req, res) => {
     try {
       const { reference } = req.body;
+      if (!reference) return res.status(400).json({ error: 'Transaction reference is required in req.body. Found: ' + JSON.stringify(req.body) });
+      if (!process.env.PAYSTACK_SECRET_KEY) return res.status(400).json({ error: 'Paystack Secret Key is missing in server environment variables.' });
       const userId = req.user.id;
       
       
@@ -334,6 +344,11 @@ const upload = multer({ storage: multer.memoryStorage() });
         payment.userId = payment.user_id;
       }
           
+          if (insertError) {
+            console.error('Insert error:', insertError);
+            return res.status(500).json({ error: insertError.message || insertError });
+          }
+
           emitEvent('new-payment', payment);
           
           await getSupabase().from('Notification').insert({
@@ -341,8 +356,6 @@ const upload = multer({ storage: multer.memoryStorage() });
              message: `Your contribution of ${data.data.currency || 'KES'} ${amount} was received successfully.`,
              userId: userId
           });
-          
-          if (insertError) { console.error('Insert error:', insertError); return res.status(500).json({ error: insertError }); }
           return res.json({ success: true, payment });
         } else {
           return res.json({ success: true, payment: existing, message: 'Already verified' });
@@ -359,10 +372,12 @@ const upload = multer({ storage: multer.memoryStorage() });
   apiRouter.post('/payments/paystack/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
     try {
       const secret = process.env.PAYSTACK_SECRET_KEY;
-      const hash = require('crypto').createHmac('sha512', secret).update(JSON.stringify(req.body)).digest('hex');
+      const bodyString = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : JSON.stringify(req.body);
+      const hash = require('crypto').createHmac('sha512', secret).update(bodyString).digest('hex');
+      const event = Buffer.isBuffer(req.body) ? JSON.parse(bodyString) : req.body;
       
       if (hash === req.headers['x-paystack-signature']) {
-        const event = req.body;
+        // event is parsed above
         
         await getSupabase().from('payment_webhooks').insert({
           event_type: event.event,
@@ -464,9 +479,9 @@ const upload = multer({ storage: multer.memoryStorage() });
   
   apiRouter.get('/config', (req, res) => {
     res.json({
-      supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
-      supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      paystackPublicKey: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || process.env.VITE_PAYSTACK_PUBLIC_KEY,
+      supabaseUrl: process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL,
+      supabaseAnonKey: process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY,
+      paystackPublicKey: process.env.PAYSTACK_PUBLIC_KEY || process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || process.env.VITE_PAYSTACK_PUBLIC_KEY,
       paystackCurrency: process.env.PAYSTACK_CURRENCY || 'KES'
     });
   });
