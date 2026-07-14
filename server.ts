@@ -47,7 +47,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 
   apiRouter.post('/auth/register', async (req, res) => {
     try {
-      const { email, password, name } = req.body;
+      const { email, password, name } = req.body || {};
       const { data: existingUser } = await getSupabase().from('User').select('*').eq('email', email).maybeSingle();
       if (existingUser) return res.status(400).json({ error: 'Email already exists' });
       
@@ -76,7 +76,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 
   apiRouter.post('/auth/login', async (req, res) => {
     try {
-      const { email, password } = req.body;
+      const { email, password } = req.body || {};
       const { data: user } = await getSupabase().from('User').select('*').eq('email', email).maybeSingle();
       if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
         return res.status(401).json({ error: 'Invalid credentials' });
@@ -92,18 +92,23 @@ const upload = multer({ storage: multer.memoryStorage() });
 
   // Auth Middleware using Supabase
   const authenticateToken = async (req: any, res: any, next: any) => {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
-    if (token == null) return res.sendStatus(401);
+    try {
+      const authHeader = req.headers['authorization'];
+      const token = authHeader && authHeader.split(' ')[1];
+      if (!token) return res.status(401).json({ error: 'Unauthorized: No token provided' });
 
-    const { data: { user }, error } = await getSupabase().auth.getUser(token);
-    if (error || !user) {
-      return res.sendStatus(403);
+      const { data: { user }, error } = await getSupabase().auth.getUser(token);
+      if (error || !user) {
+        return res.status(403).json({ error: 'Forbidden: Invalid token' });
+      }
+      
+      const { data: dbUser } = await getSupabase().from('User').select('role').eq('id', user.id).single();
+      req.user = { id: user.id, email: user.email, role: dbUser?.role || 'MEMBER' };
+      next();
+    } catch (err: any) {
+      console.error('Auth middleware error:', err);
+      res.status(500).json({ error: 'Internal Server Error during authentication: ' + err.message });
     }
-    
-    const { data: dbUser } = await getSupabase().from('User').select('role').eq('id', user.id).single();
-    req.user = { id: user.id, email: user.email, role: dbUser?.role || 'MEMBER' };
-    next();
   };
 
 
@@ -111,7 +116,7 @@ const upload = multer({ storage: multer.memoryStorage() });
     if (req.user && req.user.role === 'ADMIN') {
       next();
     } else {
-      res.sendStatus(403);
+      res.status(403).json({ error: 'Forbidden: Admin access required' });
     }
   };
 
@@ -122,7 +127,7 @@ const upload = multer({ storage: multer.memoryStorage() });
       res.json({ id: user.id, name: user.name, email: user.email, role: user.role, avatarUrl: user.avatarUrl, phone: user.phone });
     } catch (error: any) {
       console.error(error);
-      res.status(500).json({ error: error.message || 'Server error' });
+      res.status(500).json({ error: error?.message || String(error) || 'Server error' });
     }
   });
 
@@ -149,7 +154,7 @@ const upload = multer({ storage: multer.memoryStorage() });
       })));
     } catch (error: any) {
       console.error(error);
-      res.status(500).json({ error: error.message || 'Server error' });
+      res.status(500).json({ error: error?.message || String(error) || 'Server error' });
     }
   });
 
@@ -157,7 +162,7 @@ const upload = multer({ storage: multer.memoryStorage() });
   apiRouter.post('/payments/simulate', async (req, res) => {
     // Webhook simulation for a payment
     try {
-      const { amount, userId } = req.body;
+      const { amount, userId } = req.body || {};
       const { data: payment, error: insertError } = await getSupabase().from('Payment').insert({
         amount: parseFloat(amount),
         payment_reference: `REF-${Math.floor(Math.random() * 1000000)}`,
@@ -199,7 +204,7 @@ const upload = multer({ storage: multer.memoryStorage() });
       });
     } catch (error: any) {
       console.error(error);
-      res.status(500).json({ error: error.message || 'Server error' });
+      res.status(500).json({ error: error?.message || String(error) || 'Server error' });
     }
   });
 
@@ -211,7 +216,7 @@ const upload = multer({ storage: multer.memoryStorage() });
   
   apiRouter.post('/payments/paystack/initialize', authenticateToken, async (req: any, res: any) => {
     try {
-      const { amount, currency = 'KES' } = req.body;
+      const { amount, currency = 'KES' } = req.body || {};
       if (!amount || isNaN(amount)) return res.status(400).json({ error: 'Valid amount is required in req.body. Found: ' + JSON.stringify(req.body) });
       if (!process.env.PAYSTACK_SECRET_KEY) {
         return res.status(400).json({ error: 'Paystack Secret Key is missing. Please configure it in settings.' });
@@ -283,13 +288,13 @@ const upload = multer({ storage: multer.memoryStorage() });
       
       res.json(data.data);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: err?.message || String(err) });
     }
   });
 
   apiRouter.post('/payments/paystack/verify', authenticateToken, async (req, res) => {
     try {
-      const { reference } = req.body;
+      const { reference } = req.body || {};
       if (!reference) return res.status(400).json({ error: 'Transaction reference is required in req.body. Found: ' + JSON.stringify(req.body) });
       if (!process.env.PAYSTACK_SECRET_KEY) return res.status(400).json({ error: 'Paystack Secret Key is missing in server environment variables.' });
       const userId = req.user.id;
@@ -365,7 +370,7 @@ const upload = multer({ storage: multer.memoryStorage() });
       }
     } catch (error) {
       console.error('Verify error:', error);
-      res.status(500).json({ error: error.message || 'Server error' });
+      res.status(500).json({ error: error?.message || String(error) || 'Server error' });
     }
   });
 
@@ -441,13 +446,13 @@ const upload = multer({ storage: multer.memoryStorage() });
       if (error) throw error;
       res.json(data);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: err?.message || String(err) });
     }
   });
 
   apiRouter.post('/expenses', authenticateToken, requireAdmin, async (req, res) => {
     try {
-      const { title, amount, category, date } = req.body;
+      const { title, amount, category, date } = req.body || {};
       const { data, error } = await getSupabase().from('Expense').insert({
         title, amount, category, date, recordedById: req.user.id
       }).select().single();
@@ -455,7 +460,7 @@ const upload = multer({ storage: multer.memoryStorage() });
       emitEvent('new-expense', data);
       res.json(data);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: err?.message || String(err) });
     }
   });
 
@@ -471,7 +476,7 @@ const upload = multer({ storage: multer.memoryStorage() });
       const mapped = (expenses || []).map(e => ({ ...e, user: userMap[e.recordedById] || null }));
       res.json(mapped);
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: err?.message || String(err) });
     }
   });
 
@@ -496,7 +501,7 @@ const upload = multer({ storage: multer.memoryStorage() });
       if (error) throw error;
       res.json(data);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: err?.message || String(err) });
     }
   });
 
@@ -510,21 +515,21 @@ const upload = multer({ storage: multer.memoryStorage() });
       if (error) throw error;
       res.json(data);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: err?.message || String(err) });
     }
   });
 
   // Admin CRUD for Posters
   apiRouter.post('/posters', authenticateToken, requireAdmin, async (req, res) => {
     try {
-      const { title, description, imageUrl, isActive } = req.body;
+      const { title, description, imageUrl, isActive } = req.body || {};
       const { data, error } = await getSupabase().from('Poster').insert({
         title, description, imageUrl, isActive
       }).select().single();
       if (error) throw error;
       res.json(data);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: err?.message || String(err) });
     }
   });
 
@@ -534,13 +539,13 @@ const upload = multer({ storage: multer.memoryStorage() });
       if (error) throw error;
       res.json(data);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: err?.message || String(err) });
     }
   });
 
   apiRouter.put('/posters/:id', authenticateToken, requireAdmin, async (req, res) => {
     try {
-      const { title, description, imageUrl, isActive } = req.body;
+      const { title, description, imageUrl, isActive } = req.body || {};
       const { data, error } = await getSupabase().from('Poster')
         .update({ title, description, imageUrl, isActive })
         .eq('id', req.params.id)
@@ -548,7 +553,7 @@ const upload = multer({ storage: multer.memoryStorage() });
       if (error) throw error;
       res.json(data);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: err?.message || String(err) });
     }
   });
 
@@ -558,14 +563,14 @@ const upload = multer({ storage: multer.memoryStorage() });
       if (error) throw error;
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: err?.message || String(err) });
     }
   });
 
   // Admin CRUD for Expenses
   apiRouter.put('/expenses/:id', authenticateToken, requireAdmin, async (req, res) => {
     try {
-      const { title, amount, category, date } = req.body;
+      const { title, amount, category, date } = req.body || {};
       const { data, error } = await getSupabase().from('Expense')
         .update({ title, amount, category, date })
         .eq('id', req.params.id)
@@ -573,7 +578,7 @@ const upload = multer({ storage: multer.memoryStorage() });
       if (error) throw error;
       res.json(data);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: err?.message || String(err) });
     }
   });
 
@@ -583,14 +588,14 @@ const upload = multer({ storage: multer.memoryStorage() });
       if (error) throw error;
       res.json({ success: true });
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: err?.message || String(err) });
     }
   });
 
   // Admin CRUD for Payments
   apiRouter.put('/payments/:id', authenticateToken, requireAdmin, async (req, res) => {
     try {
-      const { amount, reference, date, status } = req.body;
+      const { amount, reference, date, status } = req.body || {};
       const { data, error } = await getSupabase().from('Payment')
         .update({ amount, payment_reference: reference, date, payment_status: status })
         .eq('id', req.params.id)
@@ -600,7 +605,7 @@ const upload = multer({ storage: multer.memoryStorage() });
       emitEvent('payment-updated', mappedData);
       res.json(mappedData);
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: err?.message || String(err) });
     }
   });
 
@@ -611,14 +616,14 @@ const upload = multer({ storage: multer.memoryStorage() });
       emitEvent('payment-deleted', { id: req.params.id });
       res.json({ success: true });
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: err?.message || String(err) });
     }
   });
 
   // Add Manual Payment (Cash/Transfer)
   apiRouter.post('/payments/manual', authenticateToken, requireAdmin, async (req, res) => {
     try {
-      const { userId, amount, reference, date, status } = req.body;
+      const { userId, amount, reference, date, status } = req.body || {};
       const { data, error } = await getSupabase().from('Payment').insert({
         user_id: userId, amount, payment_reference: reference, date, payment_status: status, phoneNumber: 'Manual'
       }).select('*').single();
@@ -630,14 +635,14 @@ const upload = multer({ storage: multer.memoryStorage() });
       emitEvent('new-payment', mappedData);
       res.json(mappedData);
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: err?.message || String(err) });
     }
   });
 
   // Admin CRUD for Users
   apiRouter.put('/users/:id', authenticateToken, requireAdmin, async (req, res) => {
     try {
-      const { name, email, phone } = req.body;
+      const { name, email, phone } = req.body || {};
       const { data, error } = await getSupabase().from('User')
         .update({ name, email, phone })
         .eq('id', req.params.id)
@@ -645,7 +650,7 @@ const upload = multer({ storage: multer.memoryStorage() });
       if (error) throw error;
       res.json(data);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: err?.message || String(err) });
     }
   });
 
@@ -675,7 +680,7 @@ const upload = multer({ storage: multer.memoryStorage() });
       res.json({ url: publicUrlData.publicUrl });
     } catch (err: any) {
       console.error('Upload Error:', err);
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: err?.message || String(err) });
     }
   });
 
