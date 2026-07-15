@@ -68,11 +68,19 @@ export default function Gallery() {
       });
 
       if (!uploadRes.ok) {
-        const errorData = await uploadRes.json();
-        throw new Error(errorData.error || 'Upload failed');
+        const text = await uploadRes.text();
+        let errorMessage = 'Upload failed';
+        try {
+          const errorData = JSON.parse(text);
+          errorMessage = errorData.error || errorMessage;
+        } catch (e) {
+          errorMessage = text || errorMessage;
+        }
+        throw new Error(errorMessage);
       }
 
-      const { url } = await uploadRes.json();
+      const resData = await uploadRes.json();
+      const url = resData.url;
 
       const { error } = await supabase.from('Gallery').insert({
         title,

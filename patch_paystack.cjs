@@ -1,10 +1,63 @@
 const fs = require('fs');
-let code = fs.readFileSync('server.ts', 'utf8');
+let code = fs.readFileSync('src/components/PaystackPaymentModal.tsx', 'utf8');
 
-// Patch initialize
-code = code.replace(
-  "  apiRouter.post('/payments/paystack/initialize', authenticateToken, async (req: any, res: any) => {\n    try {\n      const { amount, currency = 'KES' } = req.body || {};",
-  "  apiRouter.post('/payments/paystack/initialize', authenticateToken, async (req: any, res: any) => {\n    console.log('[Paystack Init] Starting payment initialization...');\n    try {\n      console.log('[Paystack Init] Request body:', req.body);\n      const { amount, currency = 'KES' } = req.body || {};"
-);
+const target1 = `        let data;
+        try {
+          data = await res.json();
+        } catch (e) {
+          throw new Error('Invalid server response');
+        }`;
 
-fs.writeFileSync('server.ts', code);
+const replacement1 = `        if (!res.ok) {
+           const text = await res.text();
+           console.error("Paystack verify error:", res.status, text);
+           throw new Error(text.substring(0, 100));
+        }
+        let data;
+        try {
+          data = await res.json();
+        } catch (e) {
+          throw new Error('Invalid server response');
+        }`;
+
+code = code.replace(target1, replacement1);
+
+const target2 = `      let data;
+      try {
+        data = await res.json();
+      } catch (e) {
+        setPaymentStatus('error');
+        setPaymentMessage('Invalid server response: ' + res.status);
+        return;
+      }
+      
+      if (!res.ok) {
+         setPaymentStatus('error');
+         setPaymentMessage(data.error || 'Failed to initialize payment');
+         return;
+      }`;
+
+const replacement2 = `      if (!res.ok) {
+         let errMsg = 'Failed to initialize payment';
+         try {
+           const errData = await res.json();
+           errMsg = errData.error || errMsg;
+         } catch(e) {
+           errMsg = 'Invalid server response: ' + res.status;
+         }
+         setPaymentStatus('error');
+         setPaymentMessage(errMsg);
+         return;
+      }
+
+      let data;
+      try {
+        data = await res.json();
+      } catch (e) {
+        setPaymentStatus('error');
+        setPaymentMessage('Invalid server response: ' + res.status);
+        return;
+      }`;
+
+code = code.replace(target2, replacement2);
+fs.writeFileSync('src/components/PaystackPaymentModal.tsx', code);

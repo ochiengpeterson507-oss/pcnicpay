@@ -78,6 +78,11 @@ export default function PaystackPaymentModal({ isOpen, onClose, onSuccessCallbac
            body: JSON.stringify({ reference: reference.reference })
         });
         
+        if (!res.ok) {
+           const text = await res.text();
+           console.error("Paystack verify error:", res.status, text);
+           throw new Error(text.substring(0, 100));
+        }
         let data;
         try {
           data = await res.json();
@@ -123,6 +128,19 @@ export default function PaystackPaymentModal({ isOpen, onClose, onSuccessCallbac
         })
       });
       
+      if (!res.ok) {
+         let errMsg = 'Failed to initialize payment';
+         try {
+           const errData = await res.json();
+           errMsg = errData.error || errMsg;
+         } catch(e) {
+           errMsg = 'Invalid server response: ' + res.status;
+         }
+         setPaymentStatus('error');
+         setPaymentMessage(errMsg);
+         return;
+      }
+
       let data;
       try {
         data = await res.json();
@@ -130,12 +148,6 @@ export default function PaystackPaymentModal({ isOpen, onClose, onSuccessCallbac
         setPaymentStatus('error');
         setPaymentMessage('Invalid server response: ' + res.status);
         return;
-      }
-      
-      if (!res.ok) {
-         setPaymentStatus('error');
-         setPaymentMessage(data.error || 'Failed to initialize payment');
-         return;
       }
       
       setPaymentStatus('idle');
