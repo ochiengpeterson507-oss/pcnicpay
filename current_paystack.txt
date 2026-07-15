@@ -1,0 +1,171 @@
+  
+  
+  
+
+  
+  apiRouter.post('/payments/paystack/initialize', authenticateToken, async (req: any, res: any) => {
+    console.log('[Paystack Init] Starting payment initialization...');
+    try {
+      console.log('[Paystack Init] Request body:', req.body);
+      const { amount, currency = 'KES' } = req.body || {};
+      if (!amount || isNaN(amount)) return res.status(400).json({ error: 'Valid amount is required in req.body. Found: ' + JSON.stringify(req.body) });
+      if (!process.env.PAYSTACK_SECRET_KEY) {
+        return res.status(400).json({ error: 'Paystack Secret Key is missing. Please configure it in settings.' });
+      }
+      let email = req.body.email || req.user?.email;
+      if (!email || email.trim() === '') {
+         try {
+             const { data: dbUser } = await getSupabase().from('User').select('email').eq('id', req.user.id).single();
+             if (dbUser && dbUser.email) email = dbUser.email;
+         } catch (e) {
+             console.error("Failed to get email", e);
+         }
+      }
+      if (!email || email.trim() === '') {
+         email = 'guest@example.com'; // Ultimate fallback to prevent Paystack crash
+      }
+      if (!email) {
+         const { data: dbUser } = await getSupabase().from('User').select('email').eq('id', req.user.id).single();
+         if (dbUser) email = dbUser.email;
+      }
+      if (!email) {
+         return res.status(400).json({ error: 'Email Address is required. body_email: ' + req.body.email + ', user_id: ' + req.user.id });
+      }
+      
+      const SUPPORTED_CURRENCIES = ['NGN', 'GHS', 'ZAR', 'USD', 'KES', 'RWF', 'XOF', 'EGP'];
+      if (!SUPPORTED_CURRENCIES.includes(currency)) {
+        return res.status(400).json({ error: `Currency ${currency} is not supported by Paystack.` });
+      }
+
+      
+      const response = await fetch('https://api.paystack.co/transaction/initialize', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          amount: amount * 100,
+          email,
+          currency,
+          reference: new Date().getTime().toString()
+        })
+      });
+      
+      const contentType = response.headers.get("content-type");
+      if (!response.ok) {
+          const text = await response.text();
+          console.error("Paystack Init Error:", response.status, text);
+          throw new Error(text);
+      }
+      if (!contentType?.includes("application/json")) {
+          const text = await response.text();
+          console.error("Paystack Init HTML instead of JSON:", response.status, text);
+          throw new Error(`Expected JSON but received:\n${text.substring(0, 200)}`);
+      }
+      
+      const data = await response.json();
+
+      
+      if (!data.status) {
+        if (data.message && data.message.toLowerCase().includes('currency not supported')) {
+          return res.status(400).json({ error: `This Paystack account is not enabled for ${currency}. Please use a supported currency.` });
+        }
+        if (data.message && data.message.toLowerCase() === 'invalid key') {
+          return res.status(400).json({ error: 'Invalid Paystack API key. Please check your settings.' });
+        }
+        return res.status(400).json({ error: data.message });
+      }
+      
+      res.json(data.data);
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message || String(err) });
+    }
+  });
+
+  apiRouter.post('/payments/paystack/verify', authenticateToken, async (req, res) => {
+    try {
+      const { reference } = req.body || {};
+      if (!reference) return res.status(400).json({ error: 'Transaction reference is required in req.body. Found: ' + JSON.stringify(req.body) });
+      if (!process.env.PAYSTACK_SECRET_KEY) return res.status(400).json({ error: 'Paystack Secret Key is missing in server environment variables.' });
+      const userId = req.user.id;
+      
+      
+      const response = await fetch(`https://api.paystack.co/transaction/verify/${reference}`, {
+        headers: {
+          Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`
+        }
+      });
+      
+      const contentType = response.headers.get("content-type");
+      if (!response.ok) {
+          const text = await response.text();
+          console.error("Paystack Verify Error:", response.status, text);
+          throw new Error(text);
+      }
+      if (!contentType?.includes("application/json")) {
+          const text = await response.text();
+          console.error("Paystack Verify HTML instead of JSON:", response.status, text);
+          throw new Error(`Expected JSON but received:\n${text.substring(0, 200)}`);
+      }
+            
+      const data = await response.json();
+
+      
+      if (data.status && data.data.status === 'success') {
+        const amount = data.data.amount / 100;
+        
+        const { data: existing } = await getSupabase().from('Payment')
+          .select('*')
+          .eq('payment_reference', reference)
+          .maybeSingle();
+          
+        if (!existing) {
+          const { data: payment, error: insertError } = await getSupabase().from('Payment').insert({
+            amount,
+            currency: data.data.currency || 'KES',
+            payment_reference: reference,
+            user_id: userId,
+            payment_status: 'COMPLETED',
+            paystack_transaction_id: data.data.id.toString(),
+            payment_method: data.data.channel,
+            payment_channel: data.data.channel,
+            paid_at: data.data.paid_at || new Date().toISOString()
+          }).select('*').single();
+      if (payment) {
+        const { data: user } = await getSupabase().from('User').select('name, avatarUrl').eq('id', payment.user_id).single();
+        payment.user = user;
+        payment.reference = payment.payment_reference;
+        payment.status = payment.payment_status;
+        payment.userId = payment.user_id;
+      }
+          
+          if (insertError) {
+            console.error('Insert error:', insertError);
+            return res.status(500).json({ error: insertError.message || insertError });
+          }
+
+          emitEvent('new-payment', payment);
+          
+          await getSupabase().from('Notification').insert({
+             title: 'Payment Received',
+             message: `Your contribution of ${data.data.currency || 'KES'} ${amount} was received successfully.`,
+             userId: userId
+          });
+          return res.json({ success: true, payment });
+        } else {
+          return res.json({ success: true, payment: existing, message: 'Already verified' });
+        }
+      } else {
+        res.status(400).json({ error: 'Payment verification failed' });
+      }
+    } catch (error) {
+      console.error('Verify error:', error);
+      res.status(500).json({ error: error?.message || String(error) || 'Server error' });
+    }
+  });
+
+  apiRouter.post('/payments/paystack/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+    try {
+      const secret = process.env.PAYSTACK_SECRET_KEY;
+      const bodyString = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : JSON.stringify(req.body);

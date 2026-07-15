@@ -26,14 +26,39 @@ function getSupabase() {
 
 export const app = express();
 app.use(cors());
+
+
+// Body parsing middleware that works in both Express and Vercel
 app.use((req, res, next) => {
-  if (req.body && Object.keys(req.body).length > 0) {
-    // Vercel already parsed it
-    next();
-  } else {
-    express.json()(req, res, next);
+  // Exclude webhook from global parsing
+  if (req.originalUrl && req.originalUrl.includes('/webhook')) {
+    return next();
   }
+  
+  // If req.body is already a parsed object (Vercel does this)
+  if (req.body && typeof req.body === 'object' && !Buffer.isBuffer(req.body)) {
+    return next();
+  }
+  
+  // If req.body is a string or Buffer, try to parse it
+  if (req.body && (typeof req.body === 'string' || Buffer.isBuffer(req.body))) {
+    try {
+      req.body = JSON.parse(req.body.toString());
+      return next();
+    } catch (e) {
+      // Not JSON, continue
+      return next();
+    }
+  }
+
+  // Otherwise, use express.json() but with a timeout to prevent hanging
+  express.json()(req, res, (err) => {
+    if (err) return next(err);
+    next();
+  });
 });
+
+
 app.use((req, res, next) => { console.log(req.method, req.url); next(); });
 
 let socketIoInstance = null;
@@ -215,7 +240,9 @@ const upload = multer({ storage: multer.memoryStorage() });
 
   
   apiRouter.post('/payments/paystack/initialize', authenticateToken, async (req: any, res: any) => {
+    console.log('[Paystack Init] Starting payment initialization...');
     try {
+      console.log('[Paystack Init] Request body:', req.body);
       const { amount, currency = 'KES' } = req.body || {};
       if (!amount || isNaN(amount)) return res.status(400).json({ error: 'Valid amount is required in req.body. Found: ' + JSON.stringify(req.body) });
       if (!process.env.PAYSTACK_SECRET_KEY) {
@@ -378,7 +405,7 @@ const upload = multer({ storage: multer.memoryStorage() });
     try {
       const secret = process.env.PAYSTACK_SECRET_KEY;
       const bodyString = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : JSON.stringify(req.body);
-      const hash = require('crypto').createHmac('sha512', secret).update(bodyString).digest('hex');
+      const hash = crypto.createHmac('sha512', secret || '').update(bodyString).digest('hex');
       const event = Buffer.isBuffer(req.body) ? JSON.parse(bodyString) : req.body;
       
       if (hash === req.headers['x-paystack-signature']) {
